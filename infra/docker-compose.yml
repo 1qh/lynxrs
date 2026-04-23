@@ -1,0 +1,116 @@
+services:
+  postgres:
+    image: postgres:17.2-alpine
+    container_name: simu-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-simu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-simu_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-simu}
+    ports:
+      - "5533:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-simu} -d ${POSTGRES_DB:-simu}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    container_name: simu-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-simuadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-simu_dev_minio}
+    ports:
+      - "9100:9000"
+      - "9101:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.21
+    container_name: simu-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8125:8025"
+    environment:
+      MP_MAX_MESSAGES: "5000"
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+
+  nats:
+    image: nats:2.11-alpine
+    container_name: simu-nats
+    restart: unless-stopped
+    command: ["-js"]
+    ports:
+      - "4233:4222"
+      - "8233:8222"
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://localhost:8222/healthz | grep -q ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: simu-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-simu}:${POSTGRES_PASSWORD:-simu_dev}@postgres:5432/${POSTGRES_DB:-simu}
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-simuadmin}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-simu_dev_minio}
+      S3_BUCKET: simu-uploads
+      NATS_URL: nats://nats:4222
+      SESSION_SECRET: ${SESSION_SECRET:-CHANGE_ME_64_BYTES_HEX}
+      RUST_LOG: info,simu_backend=debug,tower_http=debug
+    ports:
+      - "8088:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: simu-caddy
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8081:80"
+      - "8444:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../frontend/dist:/srv/frontend:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pg_data:
+  minio_data:
+  nats_data:
+  caddy_data:
+  caddy_config:

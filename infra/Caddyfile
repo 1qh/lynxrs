@@ -1,0 +1,38 @@
+# Local dev: Caddy serves HTTPS on :443 inside container, mapped to host :8444.
+# Caddy's internal CA signs localhost; trust it with:
+#   docker compose exec caddy caddy trust
+# or copy root cert from `caddy_data` volume to system trust store.
+
+{
+	admin off
+}
+
+# HTTPS front (internal CA for localhost)
+https://localhost {
+	tls internal
+
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy backend:8080
+	}
+
+	handle /ws {
+		reverse_proxy backend:8080
+	}
+
+	handle /health {
+		reverse_proxy backend:8080
+	}
+
+	handle {
+		root * /srv/frontend
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# Plain HTTP redirect (for curl convenience during dev)
+http://localhost {
+	redir https://localhost{uri}
+}
