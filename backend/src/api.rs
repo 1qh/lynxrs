@@ -95,6 +95,14 @@ async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "status": "ok" }))
 }
 
+async fn version() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "name": env!("CARGO_PKG_NAME"),
+        "version": env!("CARGO_PKG_VERSION"),
+        "rustc": option_env!("VERGEN_RUSTC_SEMVER").unwrap_or("unknown"),
+    }))
+}
+
 async fn not_found(uri: axum::http::Uri) -> (axum::http::StatusCode, Json<serde_json::Value>) {
     (
         axum::http::StatusCode::NOT_FOUND,
@@ -206,6 +214,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
                 }),
             )
             .route("/health", get(health))
+            .route("/version", get(version))
             .route("/ready", get(ready).with_state(ready_state))
             .merge(limited)
             .route(
