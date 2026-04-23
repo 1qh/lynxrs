@@ -195,6 +195,40 @@ async fn email_is_case_insensitive() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn delete_me_removes_account_and_revokes_login() {
+    let app = spawn_app().await;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let email = format!("delme-{nonce}@example.com");
+
+    app.client
+        .post(format!("{}/api/auth/signup", app.base))
+        .json(&serde_json::json!({ "email": email, "password": "hunter2hunter2" }))
+        .send()
+        .await
+        .unwrap();
+
+    let del = app
+        .client
+        .delete(format!("{}/api/auth/me", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del.status(), StatusCode::NO_CONTENT);
+
+    let fresh = reqwest::Client::builder().cookie_store(true).build().unwrap();
+    let login = fresh
+        .post(format!("{}/api/auth/login", app.base))
+        .json(&serde_json::json!({ "email": email, "password": "hunter2hunter2" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(login.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn change_password_rotates_hash_and_invalidates_old() {
     let app = spawn_app().await;
     let nonce = std::time::SystemTime::now()
