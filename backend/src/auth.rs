@@ -104,6 +104,7 @@ fn parse_session_cookie(jar: &PrivateCookieJar) -> Option<(Uuid, i32)> {
     responses((status = 201, body = UserDto), (status = 409)))]
 pub async fn signup(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     Json(input): Json<SignupInput>,
 ) -> Result<impl IntoResponse> {
@@ -230,9 +231,10 @@ pub async fn verify_email(
 )]
 pub async fn resend_verification(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
 ) -> Result<StatusCode> {
-    let uid = current_user_id(&state, &jar).await?;
+    let uid = authenticate(&state, &headers, &jar).await?;
     let u = user::Entity::find_by_id(uid)
         .one(&state.db)
         .await?
@@ -250,6 +252,7 @@ pub async fn resend_verification(
     responses((status = 200, body = UserDto), (status = 401)))]
 pub async fn login(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     Json(input): Json<LoginInput>,
 ) -> Result<impl IntoResponse> {
@@ -279,8 +282,12 @@ pub async fn logout(jar: PrivateCookieJar) -> Result<impl IntoResponse> {
 }
 
 #[utoipa::path(get, path = "/auth/me", responses((status = 200, body = UserDto), (status = 401)))]
-pub async fn me(State(state): State<AppState>, jar: PrivateCookieJar) -> Result<Json<UserDto>> {
-    let uid = current_user_id(&state, &jar).await?;
+pub async fn me(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+) -> Result<Json<UserDto>> {
+    let uid = authenticate(&state, &headers, &jar).await?;
     let u = user::Entity::find_by_id(uid)
         .one(&state.db)
         .await?
@@ -291,9 +298,10 @@ pub async fn me(State(state): State<AppState>, jar: PrivateCookieJar) -> Result<
 #[utoipa::path(delete, path = "/auth/me", responses((status = 204), (status = 401)))]
 pub async fn delete_me(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
 ) -> Result<impl IntoResponse> {
-    let uid = current_user_id(&state, &jar).await?;
+    let uid = authenticate(&state, &headers, &jar).await?;
     // CASCADE FKs drop file_objects, password_resets, email_verifications.
     user::Entity::delete_by_id(uid).exec(&state.db).await?;
     let jar = jar.remove(Cookie::build(SESSION_COOKIE).path("/").build());
@@ -316,6 +324,7 @@ pub struct ChangePasswordInput {
 )]
 pub async fn change_password(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     Json(input): Json<ChangePasswordInput>,
 ) -> Result<impl IntoResponse> {
@@ -323,7 +332,7 @@ pub async fn change_password(
         .validate()
         .map_err(|e| AppError::Validation(e.to_string()))?;
 
-    let uid = current_user_id(&state, &jar).await?;
+    let uid = authenticate(&state, &headers, &jar).await?;
     let u = user::Entity::find_by_id(uid)
         .one(&state.db)
         .await?
@@ -349,9 +358,10 @@ pub async fn change_password(
 #[utoipa::path(post, path = "/auth/logout-all", responses((status = 204), (status = 401)))]
 pub async fn logout_all(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
 ) -> Result<impl IntoResponse> {
-    let uid = current_user_id(&state, &jar).await?;
+    let uid = authenticate(&state, &headers, &jar).await?;
     let u = user::Entity::find_by_id(uid)
         .one(&state.db)
         .await?
@@ -506,6 +516,7 @@ pub async fn forgot_password(
 )]
 pub async fn reset_password(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     Json(input): Json<ResetPasswordInput>,
 ) -> Result<impl IntoResponse> {

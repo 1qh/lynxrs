@@ -48,10 +48,11 @@ const MAX_FILE_BYTES: usize = 50 * 1024 * 1024; // 50 MB cap for spike
 #[utoipa::path(post, path = "/files", responses((status = 201, body = FileDto), (status = 413)))]
 pub async fn upload(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     mut multipart: Multipart,
 ) -> Result<impl IntoResponse> {
-    let uid = current_user_id(&state, &jar).await?;
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
 
     let field = multipart
         .next_field()
@@ -158,10 +159,11 @@ pub async fn list(
 #[utoipa::path(delete, path = "/files/{id}", responses((status = 204), (status = 404)))]
 pub async fn delete(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
-    let uid = current_user_id(&state, &jar).await?;
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
         .one(&state.db)
         .await?
@@ -181,10 +183,11 @@ pub async fn delete(
 #[utoipa::path(get, path = "/files/{id}", responses((status = 200), (status = 404)))]
 pub async fn download(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse> {
-    let uid = current_user_id(&state, &jar).await?;
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
         .one(&state.db)
         .await?
@@ -222,13 +225,14 @@ pub struct Base64UploadInput {
     responses((status = 201, body = FileDto)))]
 pub async fn upload_json(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     Json(input): Json<Base64UploadInput>,
 ) -> Result<impl IntoResponse> {
     input
         .validate()
         .map_err(|e| AppError::Validation(e.to_string()))?;
-    let uid = current_user_id(&state, &jar).await?;
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
 
     let data = B64
         .decode(input.data_base64.as_bytes())

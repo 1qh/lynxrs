@@ -5,7 +5,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::{
-    auth::current_user_id,
+    auth::authenticate,
     entity::{file_object, user},
     error::{AppError, Result},
     state::AppState,
@@ -18,8 +18,12 @@ pub struct AdminStats {
     pub total_bytes: i64,
 }
 
-async fn require_admin(state: &AppState, jar: &PrivateCookieJar) -> Result<()> {
-    let uid = current_user_id(state, jar).await?;
+async fn require_admin(
+    state: &AppState,
+    headers: &axum::http::HeaderMap,
+    jar: &PrivateCookieJar,
+) -> Result<()> {
+    let uid = authenticate(state, headers, jar).await?;
     let u = user::Entity::find_by_id(uid)
         .one(&state.db)
         .await?
@@ -37,9 +41,10 @@ async fn require_admin(state: &AppState, jar: &PrivateCookieJar) -> Result<()> {
 )]
 pub async fn stats(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
 ) -> Result<Json<AdminStats>> {
-    require_admin(&state, &jar).await?;
+    require_admin(&state, &headers, &jar).await?;
 
     let users = user::Entity::find().count(&state.db).await?;
     let files = file_object::Entity::find().count(&state.db).await?;
@@ -88,9 +93,10 @@ impl From<user::Model> for UserSummary {
 )]
 pub async fn list_users(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
 ) -> Result<Json<Vec<UserSummary>>> {
-    require_admin(&state, &jar).await?;
+    require_admin(&state, &headers, &jar).await?;
 
     let rows = user::Entity::find()
         .filter(

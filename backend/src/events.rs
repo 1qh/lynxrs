@@ -38,11 +38,12 @@ pub fn new_bus(capacity: usize) -> EventBus {
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse> {
     // Auth: must be logged-in user
-    let _uid = current_user_id(&state, &jar).await?;
+    let _uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let bus = state.bus.clone();
     Ok(ws.on_upgrade(move |socket| handle_socket(socket, bus)))
 }

@@ -71,13 +71,14 @@ fn random_plaintext_token() -> String {
 )]
 pub async fn create(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     Json(input): Json<CreateTokenInput>,
 ) -> Result<impl IntoResponse> {
     input
         .validate()
         .map_err(|e| AppError::Validation(e.to_string()))?;
-    let uid = current_user_id(&state, &jar).await?;
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
 
     let plaintext = random_plaintext_token();
     let token_hash = sha256_hex(&plaintext);
@@ -110,9 +111,10 @@ pub async fn create(
 )]
 pub async fn list(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
 ) -> Result<Json<Vec<ApiTokenDto>>> {
-    let uid = current_user_id(&state, &jar).await?;
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let rows = api_token::Entity::find()
         .filter(api_token::Column::UserId.eq(uid))
         .order_by_desc(api_token::Column::CreatedAt)
@@ -128,10 +130,11 @@ pub async fn list(
 )]
 pub async fn revoke(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
-    let uid = current_user_id(&state, &jar).await?;
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = api_token::Entity::find_by_id(id)
         .one(&state.db)
         .await?
