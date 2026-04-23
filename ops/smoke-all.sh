@@ -39,6 +39,14 @@ curl -sf -X POST "$BASE/api/auth/password/forgot" -H "content-type: application/
 # Don't poll Mailpit here — that's covered by the e2e test.
 
 echo
+echo "=== API token CRUD ==="
+TOKEN_RESP=$(curl -sf -X POST "$BASE/api/tokens" -b "$COOKIES" -H "content-type: application/json" -d '{"name":"smoke-token"}')
+TOKEN_ID=$(echo "$TOKEN_RESP" | python3 -c "import json,sys;print(json.load(sys.stdin)['token']['id'])")
+[ -n "$TOKEN_ID" ] && pass "token create 201 ($TOKEN_ID)" || fail "token create"
+curl -sf -b "$COOKIES" "$BASE/api/tokens" | grep -q "$TOKEN_ID" && pass "token list shows id" || fail "token list"
+curl -sf -X DELETE -b "$COOKIES" "$BASE/api/tokens/$TOKEN_ID" >/dev/null && pass "token revoke 204" || fail "token revoke"
+
+echo
 echo "=== Logout + 401 ==="
 curl -sf -X POST -b "$COOKIES" -c "$COOKIES" "$BASE/api/auth/logout" >/dev/null && pass "logout 204"
 code=$(curl -s -b "$COOKIES" -o /dev/null -w "%{http_code}" "$BASE/api/auth/me")
