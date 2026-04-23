@@ -115,6 +115,7 @@ pub async fn signup(
         id: Set(id),
         email: Set(email),
         password_hash: Set(password_hash),
+        role: Set("user".to_string()),
         created_at: Set(now),
         updated_at: Set(now),
     }
