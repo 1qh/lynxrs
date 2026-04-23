@@ -43,6 +43,8 @@ pub struct LoginInput {
 pub struct UserDto {
     pub id: Uuid,
     pub email: String,
+    pub role: String,
+    pub email_verified: bool,
 }
 
 impl From<user::Model> for UserDto {
@@ -50,6 +52,8 @@ impl From<user::Model> for UserDto {
         Self {
             id: m.id,
             email: m.email,
+            role: m.role,
+            email_verified: m.email_verified_at.is_some(),
         }
     }
 }
