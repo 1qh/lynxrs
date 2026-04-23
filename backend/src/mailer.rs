@@ -42,4 +42,22 @@ impl Mailer {
         self.transport.send(email).await?;
         Ok(())
     }
+
+    pub async fn send_email_verification(
+        &self,
+        to: &str,
+        verify_url: &str,
+    ) -> anyhow::Result<()> {
+        let body = format!(
+            "Welcome to simu!\n\nConfirm your email by clicking:\n\n  {verify_url}\n\nLink expires in 48 hours.\n\n— simu"
+        );
+        let email = Message::builder()
+            .from(self.from.parse()?)
+            .to(to.parse()?)
+            .subject("Confirm your simu email")
+            .header(ContentType::TEXT_PLAIN)
+            .body(body)?;
+        self.transport.send(email).await?;
+        Ok(())
+    }
 }
