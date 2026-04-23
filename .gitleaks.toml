@@ -1,0 +1,22 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Spike: ignore build artifacts, deps, and test-results"
+paths = [
+  '''node_modules/''',
+  '''target/''',
+  '''dist/''',
+  '''test-results/''',
+  '''playwright-report/''',
+  '''\.cargo/''',
+  '''Cargo\.lock''',
+  '''bun\.lock''',
+  '''bun\.lockb''',
+  '''package-lock\.json''',
+  '''pnpm-lock\.yaml''',
+  '''\.env\.example$''',
+  '''^backend/\.env$''',
+  '''^infra/\.env$''',
+  '''docs/DEP_AUDIT\.md$''',
+]
