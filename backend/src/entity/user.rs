@@ -10,6 +10,8 @@ pub struct Model {
     pub email: String,
     #[serde(skip_serializing)]
     pub password_hash: String,
+    #[sea_orm(default_value = "user")]
+    pub role: String,
     pub created_at: ChronoDateTimeUtc,
     pub updated_at: ChronoDateTimeUtc,
 }
