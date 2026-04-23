@@ -72,3 +72,9 @@
   margin: 8px 0;
 }
 .BannerText { color: #f5c46b; font-size: 13px; }
+.AdminPanel {
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid #2a355a;
+  margin-top: 8px;
+}

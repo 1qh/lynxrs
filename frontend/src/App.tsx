@@ -96,11 +96,14 @@ function AuthForm() {
   )
 }
 
+type AdminStats = components['schemas']['AdminStats']
+
 function Home() {
   const user = useAuth((s) => s.user)!
   const setUser = useAuth((s) => s.setUser)
   const [files, setFiles] = useState<FileDto[]>([])
   const [busy, setBusy] = useState(false)
+  const [stats, setStats] = useState<AdminStats | null>(null)
 
   const refresh = useCallback(async () => {
     const { data } = await api.GET('/files', { params: { query: {} } })
@@ -156,6 +159,11 @@ function Home() {
     await api.POST('/auth/email/resend', {})
   }, [])
 
+  const loadStats = useCallback(async () => {
+    const { data } = await api.GET('/admin/stats', {})
+    if (data) setStats(data as AdminStats)
+  }, [])
+
   return (
     <view className="Card">
       <text className="H2">Hello {user.email}</text>
@@ -164,6 +172,18 @@ function Home() {
           <text className="BannerText">
             Email not verified · tap to resend
           </text>
+        </view>
+      ) : null}
+      {user.role === 'admin' ? (
+        <view className="AdminPanel">
+          <view className="Button ButtonGhost" bindtap={loadStats}>
+            <text className="ButtonText">Admin stats</text>
+          </view>
+          {stats ? (
+            <text className="Muted">
+              users: {stats.users} · files: {stats.files} · bytes: {stats.total_bytes}
+            </text>
+          ) : null}
         </view>
       ) : null}
       <view className="Button" bindtap={busy ? undefined : upload}>
