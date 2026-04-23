@@ -1,0 +1,66 @@
+.Screen {
+  width: 100%;
+  height: 100%;
+  background-color: #0b1020;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.Frame {
+  width: 100%;
+  max-width: 390px;
+  background-color: #10172a;
+  border-radius: 20px;
+  padding: 24px;
+}
+
+.Title {
+  font-size: 32px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 16px;
+}
+
+.Subtitle { color: #7a8299; font-size: 14px; }
+
+.Card { gap: 12px; padding: 4px; }
+
+.H2 {
+  color: #ffffff; font-size: 20px; font-weight: 600; margin-bottom: 8px;
+}
+
+.Input {
+  height: 44px; border-radius: 10px;
+  background-color: #1a2340; color: #ffffff;
+  padding: 0 14px; font-size: 16px;
+  border: 1px solid #2a355a;
+}
+
+.Button {
+  height: 44px; border-radius: 10px;
+  background-color: #3b82f6;
+  align-items: center; justify-content: center;
+  margin-top: 4px;
+}
+
+.ButtonGhost {
+  background-color: transparent;
+  border: 1px solid #2a355a;
+}
+
+.ButtonText { color: #ffffff; font-size: 16px; font-weight: 600; }
+
+.SwitchRow { align-items: center; padding: 10px; }
+.SwitchText { color: #8aa2ff; font-size: 14px; }
+
+.Error { color: #ff6b7a; font-size: 14px; }
+.Muted { color: #7a8299; font-size: 14px; padding: 10px 0; }
+
+.FileList { margin-top: 12px; gap: 8px; }
+.FileRow {
+  background-color: #1a2340; border-radius: 10px;
+  padding: 12px; gap: 4px;
+}
+.FileName { color: #ffffff; font-size: 15px; font-weight: 500; }
+.FileMeta { color: #7a8299; font-size: 12px; }
