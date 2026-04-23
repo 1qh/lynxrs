@@ -231,7 +231,10 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
             .layer(axum::middleware::from_fn(security_headers))
             .layer(CompressionLayer::new())
             .layer(RequestBodyLimitLayer::new(64 * 1024 * 1024))
-            .layer(TimeoutLayer::new(std::time::Duration::from_secs(30)))
+            .layer(TimeoutLayer::with_status_code(
+                axum::http::StatusCode::REQUEST_TIMEOUT,
+                std::time::Duration::from_secs(30),
+            ))
             .layer(cors)
     } else {
         Router::new()
