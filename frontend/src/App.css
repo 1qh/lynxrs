@@ -64,3 +64,11 @@
 }
 .FileName { color: #ffffff; font-size: 15px; font-weight: 500; }
 .FileMeta { color: #7a8299; font-size: 12px; }
+.Banner {
+  background-color: #3a2a10;
+  border: 1px solid #6b4f1a;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 8px 0;
+}
+.BannerText { color: #f5c46b; font-size: 13px; }

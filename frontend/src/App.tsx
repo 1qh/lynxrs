@@ -152,9 +152,20 @@ function Home() {
     }
   }, [refresh])
 
+  const resend = useCallback(async () => {
+    await api.POST('/auth/email/resend', {})
+  }, [])
+
   return (
     <view className="Card">
       <text className="H2">Hello {user.email}</text>
+      {!user.email_verified ? (
+        <view className="Banner" bindtap={resend}>
+          <text className="BannerText">
+            Email not verified · tap to resend
+          </text>
+        </view>
+      ) : null}
       <view className="Button" bindtap={busy ? undefined : upload}>
         <text className="ButtonText">{busy ? 'uploading…' : 'Upload sample file'}</text>
       </view>
