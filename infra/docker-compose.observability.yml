@@ -2,6 +2,17 @@
 #   docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
 # Or standalone with --profile obs.
 services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: simu-jaeger
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"   # web UI
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
+
   prometheus:
     image: prom/prometheus:v2.55.1
     container_name: simu-prometheus

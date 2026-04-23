@@ -13,18 +13,21 @@ use simu_backend::{
     events, housekeeping, mailer,
     migration::Migrator,
     state::AppState,
+    telemetry,
 };
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let _ = dotenvy::dotenv();
 
+    let otel = telemetry::maybe_otel_layer();
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| "info,simu_backend=debug,tower_http=debug".into()),
         )
         .with(tracing_subscriber::fmt::layer().with_target(false))
+        .with(otel)
         .init();
 
     let cfg = Config::from_env()?;
