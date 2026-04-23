@@ -104,7 +104,7 @@ fn parse_session_cookie(jar: &PrivateCookieJar) -> Option<(Uuid, i32)> {
     responses((status = 201, body = UserDto), (status = 409)))]
 pub async fn signup(
     State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
+    _headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     Json(input): Json<SignupInput>,
 ) -> Result<impl IntoResponse> {
@@ -252,7 +252,7 @@ pub async fn resend_verification(
     responses((status = 200, body = UserDto), (status = 401)))]
 pub async fn login(
     State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
+    _headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     Json(input): Json<LoginInput>,
 ) -> Result<impl IntoResponse> {
@@ -516,7 +516,7 @@ pub async fn forgot_password(
 )]
 pub async fn reset_password(
     State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
+    _headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     Json(input): Json<ResetPasswordInput>,
 ) -> Result<impl IntoResponse> {

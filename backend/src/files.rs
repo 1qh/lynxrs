@@ -15,7 +15,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    auth::current_user_id,
+
     entity::file_object,
     error::{AppError, Result},
     events::EventMsg,

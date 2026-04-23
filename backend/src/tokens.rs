@@ -10,7 +10,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    auth::current_user_id,
+
     entity::api_token,
     error::{AppError, Result},
     state::AppState,
