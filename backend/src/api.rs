@@ -58,6 +58,7 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         auth::UserDto,
         auth::ForgotPasswordInput,
         auth::ResetPasswordInput,
+        auth::ChangePasswordInput,
         files::FileDto,
         files::FileList,
         files::Base64UploadInput,
@@ -99,6 +100,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(auth::me))
         .routes(routes!(auth::forgot_password))
         .routes(routes!(auth::reset_password))
+        .routes(routes!(auth::change_password))
         .routes(routes!(files::upload))
         .routes(routes!(files::upload_json))
         .routes(routes!(files::list))

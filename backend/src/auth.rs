@@ -168,6 +168,50 @@ pub async fn me(State(state): State<AppState>, jar: PrivateCookieJar) -> Result<
     Ok(Json(UserDto::from(u)))
 }
 
+#[derive(Deserialize, ToSchema, Validate)]
+pub struct ChangePasswordInput {
+    #[validate(length(min = 1, max = 128))]
+    pub current_password: String,
+    #[validate(length(min = 8, max = 128))]
+    pub new_password: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/auth/password/change",
+    request_body = ChangePasswordInput,
+    responses((status = 204), (status = 401), (status = 400))
+)]
+pub async fn change_password(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    Json(input): Json<ChangePasswordInput>,
+) -> Result<impl IntoResponse> {
+    input
+        .validate()
+        .map_err(|e| AppError::Validation(e.to_string()))?;
+
+    let uid = current_user_id(&jar)?;
+    let u = user::Entity::find_by_id(uid)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+
+    if !verify_password(input.current_password, u.password_hash.clone()).await? {
+        return Err(AppError::Unauthorized);
+    }
+    let new_hash = hash_password(input.new_password).await?;
+
+    let mut active: user::ActiveModel = u.into();
+    active.password_hash = Set(new_hash);
+    active.updated_at = Set(chrono::Utc::now());
+    active.update(&state.db).await?;
+
+    // Refresh cookie so the session stays valid post-rotation.
+    let jar = jar.add(issue_cookie(uid));
+    Ok((StatusCode::NO_CONTENT, jar))
+}
+
 pub fn current_user_id(jar: &PrivateCookieJar) -> Result<Uuid> {
     jar.get(SESSION_COOKIE)
         .and_then(|c| Uuid::parse_str(c.value()).ok())
