@@ -378,6 +378,43 @@ pub async fn current_user_id(state: &AppState, jar: &PrivateCookieJar) -> Result
     Ok(uid)
 }
 
+/// Accept cookie session OR `Authorization: Bearer simu_<plaintext>` API token.
+/// Updates the token's last_used_at on each call.
+pub async fn authenticate(
+    state: &AppState,
+    headers: &axum::http::HeaderMap,
+    jar: &PrivateCookieJar,
+) -> Result<Uuid> {
+    // 1) Bearer token
+    if let Some(hdr) = headers.get(axum::http::header::AUTHORIZATION)
+        && let Ok(hdr_s) = hdr.to_str()
+        && let Some(token) = hdr_s.strip_prefix("Bearer ")
+    {
+        let token_hash = {
+            let digest = sha2::Sha256::digest(token.as_bytes());
+            hex::encode(digest)
+        };
+        use crate::entity::api_token;
+        if let Some(row) = api_token::Entity::find()
+            .filter(api_token::Column::TokenHash.eq(&token_hash))
+            .one(&state.db)
+            .await?
+        {
+            if row.revoked_at.is_some() {
+                return Err(AppError::Unauthorized);
+            }
+            // Fire-and-forget last_used_at update
+            let uid = row.user_id;
+            let mut am: api_token::ActiveModel = row.into();
+            am.last_used_at = Set(Some(chrono::Utc::now()));
+            let _ = am.update(&state.db).await;
+            return Ok(uid);
+        }
+    }
+    // 2) Cookie session
+    current_user_id(state, jar).await
+}
+
 /// Cookie-only parse — used rarely (e.g., WS upgrade before DB access). Does NOT verify version.
 pub fn current_user_id_unchecked(jar: &PrivateCookieJar) -> Result<Uuid> {
     jar.get(SESSION_COOKIE)
