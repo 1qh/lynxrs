@@ -15,12 +15,12 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-
-    entity::file_object,
+    entity::{file_object, file_share},
     error::{AppError, Result},
     events::EventMsg,
     state::AppState,
 };
+use sha2::Digest;
 
 #[derive(Serialize, ToSchema)]
 pub struct FileDto {
@@ -210,6 +210,160 @@ pub async fn download(
         ],
         bytes,
     ))
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct FileShareDto {
+    pub id: Uuid,
+    pub file_id: Uuid,
+    pub url: String,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Deserialize, ToSchema, Validate)]
+pub struct CreateShareInput {
+    /// Optional expiry in hours (default 24, max 720 = 30 days).
+    pub ttl_hours: Option<i64>,
+}
+
+fn sha256_hex(value: &str) -> String {
+    let digest = sha2::Sha256::digest(value.as_bytes());
+    hex::encode(digest)
+}
+
+fn random_share_token() -> String {
+    use argon2::password_hash::rand_core::{OsRng, RngCore};
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    let mut buf = [0u8; 24];
+    OsRng.fill_bytes(&mut buf);
+    URL_SAFE_NO_PAD.encode(buf)
+}
+
+#[utoipa::path(
+    post,
+    path = "/files/{id}/shares",
+    request_body = CreateShareInput,
+    responses((status = 201, body = FileShareDto), (status = 404))
+)]
+pub async fn create_share(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Path(file_id): Path<Uuid>,
+    Json(input): Json<CreateShareInput>,
+) -> Result<impl IntoResponse> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let row = file_object::Entity::find_by_id(file_id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if row.owner_id != uid {
+        return Err(AppError::NotFound);
+    }
+    let ttl = input.ttl_hours.unwrap_or(24).clamp(1, 720);
+    let expires_at = Some(chrono::Utc::now() + chrono::Duration::hours(ttl));
+
+    let raw = random_share_token();
+    let token_hash = sha256_hex(&raw);
+    let id = Uuid::now_v7();
+
+    let model = file_share::ActiveModel {
+        id: Set(id),
+        file_id: Set(file_id),
+        token_hash: Set(token_hash),
+        expires_at: Set(expires_at),
+        created_at: Set(chrono::Utc::now()),
+        revoked_at: Set(None),
+    }
+    .insert(&state.db)
+    .await?;
+
+    let url = format!(
+        "{}/api/shares/{raw}",
+        state.public_base_url.trim_end_matches('/')
+    );
+    Ok((
+        StatusCode::CREATED,
+        Json(FileShareDto {
+            id: model.id,
+            file_id,
+            url,
+            expires_at: model.expires_at,
+            created_at: model.created_at,
+        }),
+    ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/shares/{token}",
+    responses((status = 200), (status = 404), (status = 410))
+)]
+pub async fn download_share(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+) -> Result<impl IntoResponse> {
+    let token_hash = sha256_hex(&token);
+    let share = file_share::Entity::find()
+        .filter(file_share::Column::TokenHash.eq(&token_hash))
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if share.revoked_at.is_some() {
+        return Err(AppError::BadRequest("share revoked".into()));
+    }
+    if let Some(exp) = share.expires_at
+        && exp < chrono::Utc::now()
+    {
+        return Err(AppError::BadRequest("share expired".into()));
+    }
+    let row = file_object::Entity::find_by_id(share.file_id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let obj_path = ObjPath::from(row.storage_key.clone());
+    let result = state.storage.get(&obj_path).await?;
+    let bytes = result.bytes().await?;
+    Ok((
+        [
+            (axum::http::header::CONTENT_TYPE, row.content_type.clone()),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{}\"", row.filename),
+            ),
+        ],
+        bytes,
+    ))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/files/shares/{id}",
+    responses((status = 204), (status = 404))
+)]
+pub async fn revoke_share(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let share = file_share::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let file = file_object::Entity::find_by_id(share.file_id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if file.owner_id != uid {
+        return Err(AppError::NotFound);
+    }
+    let mut am: file_share::ActiveModel = share.into();
+    am.revoked_at = Set(Some(chrono::Utc::now()));
+    am.update(&state.db).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize, ToSchema, Validate)]

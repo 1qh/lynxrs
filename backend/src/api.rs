@@ -64,6 +64,8 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         auth::VerifyEmailInput,
         files::FileDto,
         files::FileList,
+        files::FileShareDto,
+        files::CreateShareInput,
         files::Base64UploadInput,
         events::EventMsg,
         admin::AdminStats,
@@ -161,6 +163,9 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(files::list))
         .routes(routes!(files::download))
         .routes(routes!(files::delete))
+        .routes(routes!(files::create_share))
+        .routes(routes!(files::download_share))
+        .routes(routes!(files::revoke_share))
         .routes(routes!(admin::stats))
         .routes(routes!(admin::list_users))
         .routes(routes!(tokens::create, tokens::list))
