@@ -11,6 +11,7 @@ use tower_http::{
     cors::{AllowOrigin, CorsLayer},
     limit::RequestBodyLimitLayer,
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
+    timeout::TimeoutLayer,
     trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
 };
 
@@ -226,8 +227,8 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
             .layer(SetRequestIdLayer::new(X_REQUEST_ID, MakeRequestUuid))
             .layer(axum::middleware::from_fn(security_headers))
             .layer(CompressionLayer::new())
-            // 64 MB request body cap (multipart upload path also has its own 50 MB enforcement)
             .layer(RequestBodyLimitLayer::new(64 * 1024 * 1024))
+            .layer(TimeoutLayer::new(std::time::Duration::from_secs(30)))
             .layer(cors)
     } else {
         Router::new()
