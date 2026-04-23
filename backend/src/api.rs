@@ -92,6 +92,16 @@ async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "status": "ok" }))
 }
 
+async fn not_found(uri: axum::http::Uri) -> (axum::http::StatusCode, Json<serde_json::Value>) {
+    (
+        axum::http::StatusCode::NOT_FOUND,
+        Json(serde_json::json!({
+            "code": "not_found",
+            "message": format!("no route for {}", uri.path()),
+        })),
+    )
+}
+
 /// Readiness check — verifies the DB is reachable. Returns 503 on failure.
 /// Kubernetes/Docker can split liveness (/health) from readiness (/ready).
 async fn ready(
@@ -200,6 +210,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
                     async move { Json(doc) }
                 }),
             )
+            .fallback(not_found)
             .layer(prometheus_layer)
             .layer(
                 TraceLayer::new_for_http()
