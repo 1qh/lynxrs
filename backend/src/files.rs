@@ -126,10 +126,11 @@ pub struct FileList {
 )]
 pub async fn list(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     axum::extract::Query(q): axum::extract::Query<ListQuery>,
 ) -> Result<Json<FileList>> {
-    let uid = current_user_id(&state, &jar).await?;
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let limit = q.limit.unwrap_or(50).min(200);
 
     let mut query = file_object::Entity::find()
