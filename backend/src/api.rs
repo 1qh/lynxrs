@@ -45,7 +45,7 @@ use tracing::Level;
 use utoipa::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::{auth, error::ErrorBody, events, files, state::AppState};
+use crate::{admin, auth, error::ErrorBody, events, files, state::AppState};
 
 const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
 
@@ -62,6 +62,8 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         files::FileList,
         files::Base64UploadInput,
         events::EventMsg,
+        admin::AdminStats,
+        admin::UserSummary,
     )),
     tags((name = "simu", description = "Simu SaaS API"))
 )]
@@ -102,6 +104,8 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(files::list))
         .routes(routes!(files::download))
         .routes(routes!(files::delete))
+        .routes(routes!(admin::stats))
+        .routes(routes!(admin::list_users))
         .with_state(state.clone())
         .split_for_parts();
 
