@@ -8,6 +8,7 @@ pub mod entity;
 pub mod error;
 pub mod events;
 pub mod files;
+pub mod housekeeping;
 pub mod mailer;
 pub mod migration;
 pub mod state;

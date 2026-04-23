@@ -10,7 +10,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use simu_backend::{
     api::{self, BuildOpts},
     config::Config,
-    events, mailer,
+    events, housekeeping, mailer,
     migration::Migrator,
     state::AppState,
 };
@@ -50,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
     let mailer = mailer::Mailer::from_env()?;
 
     let state = AppState {
-        db,
+        db: db.clone(),
         storage,
         bucket: cfg.s3_bucket.clone(),
         cookie_key: Key::from(&cfg.session_secret),
@@ -58,6 +58,9 @@ async fn main() -> anyhow::Result<()> {
         mailer,
         public_base_url: cfg.public_base_url.clone(),
     };
+
+    // Background housekeeping: sweep expired auth tokens every 5 minutes.
+    housekeeping::spawn(db, Duration::from_secs(300));
 
     let rate_limit_rps: u64 = std::env::var("RATE_LIMIT_RPS")
         .ok()
