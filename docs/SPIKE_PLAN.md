@@ -176,6 +176,29 @@ Network, HA/scaling, compliance, contracts, paranoid, supporting infra, etc. —
 
 ---
 
+## Further additions (second autonomous pass)
+
+- **/ready** readiness probe (DB ping) separate from /health liveness
+- **JSON 404 fallback** with `code=not_found`
+- **64 MB RequestBodyLimitLayer** + **30 s TimeoutLayer**
+- **Security headers middleware**: X-Content-Type-Options, X-Frame-Options, Referrer-Policy, HSTS, Permissions-Policy
+- **Email verification** — `/api/auth/email/{verify,resend}`, auto-enqueue on signup, hashed 48h tokens
+- **Change password** — `/api/auth/password/change`, rotates hash + refreshes cookie
+- **Admin role** + `/api/admin/{stats,users}` endpoints
+- **Cursor pagination** on `/api/files` (correct LT-cursor using last-kept row)
+- **simu-admin CLI** — create/promote admins without DB shell
+- **Additional E2E specs**: admin, pagination, email-verify
+- **Repo on GitHub**: https://github.com/1qh/simu-spike
+- **Structure flattened**: root is repo root (was nested under `spike/`)
+- **Apache-2.0 LICENSE + CONTRIBUTING.md**
+- Rust test coverage via `cargo-llvm-cov`
+
+**Final test tally:**
+- Rust: **8/8** green (4 property + 4 integration, 1 upload-path ignored)
+- Playwright: **9/9** green
+- HTTP curl smoke: **11/11** green
+- cargo clippy: 0 issues · cargo-deny: 4 gates green · gitleaks: 0 · trivy image: 0 HIGH/CRITICAL
+
 ## Added during autonomous push — beyond original 160-checkpoint plan
 
 - **WebSocket real-time events** (`/events/ws`) + tokio `broadcast` bus + Lynx frontend auto-refresh subscribing to `FileCreated`.
