@@ -13,6 +13,8 @@ pub struct Model {
     #[sea_orm(default_value = "user")]
     pub role: String,
     pub email_verified_at: Option<ChronoDateTimeUtc>,
+    #[sea_orm(default_value = 0)]
+    pub session_version: i32,
     pub created_at: ChronoDateTimeUtc,
     pub updated_at: ChronoDateTimeUtc,
 }

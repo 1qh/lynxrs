@@ -84,6 +84,7 @@ async fn main() -> anyhow::Result<()> {
                 password_hash: Set(phc),
                 role: Set("admin".to_string()),
                 email_verified_at: Set(Some(now)),
+                session_version: Set(0),
                 created_at: Set(now),
                 updated_at: Set(now),
             }

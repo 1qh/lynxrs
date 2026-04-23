@@ -42,7 +42,7 @@ pub async fn ws_handler(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse> {
     // Auth: must be logged-in user
-    let _uid = current_user_id(&jar)?;
+    let _uid = current_user_id(&state, &jar).await?;
     let bus = state.bus.clone();
     Ok(ws.on_upgrade(move |socket| handle_socket(socket, bus)))
 }

@@ -82,14 +82,22 @@ async fn verify_password(password: String, phc: String) -> Result<bool> {
     .map_err(|e| AppError::Other(anyhow::anyhow!("spawn_blocking: {e}")))?
 }
 
-fn issue_cookie(user_id: Uuid) -> Cookie<'static> {
-    Cookie::build((SESSION_COOKIE, user_id.to_string()))
+fn issue_cookie(user_id: Uuid, session_version: i32) -> Cookie<'static> {
+    let value = format!("{user_id}:{session_version}");
+    Cookie::build((SESSION_COOKIE, value))
         .http_only(true)
         .same_site(SameSite::Lax)
         .secure(false) // TODO: true under HTTPS in prod
         .path("/")
         .max_age(time::Duration::days(SESSION_TTL_DAYS))
         .build()
+}
+
+fn parse_session_cookie(jar: &PrivateCookieJar) -> Option<(Uuid, i32)> {
+    let cookie = jar.get(SESSION_COOKIE)?;
+    let value = cookie.value();
+    let (uid, v) = value.split_once(':')?;
+    Some((Uuid::parse_str(uid).ok()?, v.parse().ok()?))
 }
 
 #[utoipa::path(post, path = "/auth/signup", request_body = SignupInput,
@@ -121,6 +129,7 @@ pub async fn signup(
         password_hash: Set(password_hash),
         role: Set("user".to_string()),
         email_verified_at: Set(None),
+        session_version: Set(0),
         created_at: Set(now),
         updated_at: Set(now),
     }
@@ -132,7 +141,7 @@ pub async fn signup(
         tracing::warn!(error=%e, "verification email enqueue failed");
     }
 
-    let jar = jar.add(issue_cookie(u.id));
+    let jar = jar.add(issue_cookie(u.id, u.session_version));
     Ok((StatusCode::CREATED, jar, Json(UserDto::from(u))))
 }
 
@@ -223,7 +232,7 @@ pub async fn resend_verification(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
 ) -> Result<StatusCode> {
-    let uid = current_user_id(&jar)?;
+    let uid = current_user_id(&state, &jar).await?;
     let u = user::Entity::find_by_id(uid)
         .one(&state.db)
         .await?
@@ -259,7 +268,7 @@ pub async fn login(
         return Err(AppError::Unauthorized);
     }
 
-    let jar = jar.add(issue_cookie(u.id));
+    let jar = jar.add(issue_cookie(u.id, u.session_version));
     Ok((jar, Json(UserDto::from(u))))
 }
 
@@ -271,7 +280,7 @@ pub async fn logout(jar: PrivateCookieJar) -> Result<impl IntoResponse> {
 
 #[utoipa::path(get, path = "/auth/me", responses((status = 200, body = UserDto), (status = 401)))]
 pub async fn me(State(state): State<AppState>, jar: PrivateCookieJar) -> Result<Json<UserDto>> {
-    let uid = current_user_id(&jar)?;
+    let uid = current_user_id(&state, &jar).await?;
     let u = user::Entity::find_by_id(uid)
         .one(&state.db)
         .await?
@@ -284,7 +293,7 @@ pub async fn delete_me(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
 ) -> Result<impl IntoResponse> {
-    let uid = current_user_id(&jar)?;
+    let uid = current_user_id(&state, &jar).await?;
     // CASCADE FKs drop file_objects, password_resets, email_verifications.
     user::Entity::delete_by_id(uid).exec(&state.db).await?;
     let jar = jar.remove(Cookie::build(SESSION_COOKIE).path("/").build());
@@ -314,7 +323,7 @@ pub async fn change_password(
         .validate()
         .map_err(|e| AppError::Validation(e.to_string()))?;
 
-    let uid = current_user_id(&jar)?;
+    let uid = current_user_id(&state, &jar).await?;
     let u = user::Entity::find_by_id(uid)
         .one(&state.db)
         .await?
@@ -324,18 +333,53 @@ pub async fn change_password(
         return Err(AppError::Unauthorized);
     }
     let new_hash = hash_password(input.new_password).await?;
+    let new_version = u.session_version + 1;
 
     let mut active: user::ActiveModel = u.into();
     active.password_hash = Set(new_hash);
+    active.session_version = Set(new_version);
     active.updated_at = Set(chrono::Utc::now());
     active.update(&state.db).await?;
 
-    // Refresh cookie so the session stays valid post-rotation.
-    let jar = jar.add(issue_cookie(uid));
+    // Refresh cookie with bumped version — old cookies instantly invalid.
+    let jar = jar.add(issue_cookie(uid, new_version));
     Ok((StatusCode::NO_CONTENT, jar))
 }
 
-pub fn current_user_id(jar: &PrivateCookieJar) -> Result<Uuid> {
+#[utoipa::path(post, path = "/auth/logout-all", responses((status = 204), (status = 401)))]
+pub async fn logout_all(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+) -> Result<impl IntoResponse> {
+    let uid = current_user_id(&state, &jar).await?;
+    let u = user::Entity::find_by_id(uid)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+    let mut am: user::ActiveModel = u.into();
+    am.session_version = Set(am.session_version.unwrap() + 1);
+    am.updated_at = Set(chrono::Utc::now());
+    am.update(&state.db).await?;
+    let jar = jar.remove(Cookie::build(SESSION_COOKIE).path("/").build());
+    Ok((StatusCode::NO_CONTENT, jar))
+}
+
+/// Verify the session cookie: parse `user_id:version`, look up the user, compare versions.
+/// Returns the authoritative user_id on success.
+pub async fn current_user_id(state: &AppState, jar: &PrivateCookieJar) -> Result<Uuid> {
+    let (uid, v) = parse_session_cookie(jar).ok_or(AppError::Unauthorized)?;
+    let u = user::Entity::find_by_id(uid)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+    if u.session_version != v {
+        return Err(AppError::Unauthorized);
+    }
+    Ok(uid)
+}
+
+/// Cookie-only parse — used rarely (e.g., WS upgrade before DB access). Does NOT verify version.
+pub fn current_user_id_unchecked(jar: &PrivateCookieJar) -> Result<Uuid> {
     jar.get(SESSION_COOKIE)
         .and_then(|c| Uuid::parse_str(c.value()).ok())
         .ok_or(AppError::Unauthorized)
@@ -453,15 +497,17 @@ pub async fn reset_password(
         .one(&state.db)
         .await?
         .ok_or(AppError::NotFound)?;
-    let mut u: user::ActiveModel = u.into();
-    u.password_hash = Set(new_hash);
-    u.updated_at = Set(chrono::Utc::now());
-    u.update(&state.db).await?;
+    let new_version = u.session_version + 1;
+    let mut u_am: user::ActiveModel = u.into();
+    u_am.password_hash = Set(new_hash);
+    u_am.session_version = Set(new_version);
+    u_am.updated_at = Set(chrono::Utc::now());
+    u_am.update(&state.db).await?;
 
     let mut used: password_reset::ActiveModel = row.into();
     used.used_at = Set(Some(chrono::Utc::now()));
     used.update(&state.db).await?;
 
-    let jar = jar.add(issue_cookie(user_id));
+    let jar = jar.add(issue_cookie(user_id, new_version));
     Ok((StatusCode::NO_CONTENT, jar))
 }

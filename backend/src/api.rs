@@ -146,6 +146,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(auth::signup))
         .routes(routes!(auth::login))
         .routes(routes!(auth::logout))
+        .routes(routes!(auth::logout_all))
         .routes(routes!(auth::me, auth::delete_me))
         .routes(routes!(auth::forgot_password))
         .routes(routes!(auth::reset_password))

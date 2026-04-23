@@ -19,7 +19,7 @@ pub struct AdminStats {
 }
 
 async fn require_admin(state: &AppState, jar: &PrivateCookieJar) -> Result<()> {
-    let uid = current_user_id(jar)?;
+    let uid = current_user_id(state, jar).await?;
     let u = user::Entity::find_by_id(uid)
         .one(&state.db)
         .await?

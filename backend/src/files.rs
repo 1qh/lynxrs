@@ -51,7 +51,7 @@ pub async fn upload(
     jar: PrivateCookieJar,
     mut multipart: Multipart,
 ) -> Result<impl IntoResponse> {
-    let uid = current_user_id(&jar)?;
+    let uid = current_user_id(&state, &jar).await?;
 
     let field = multipart
         .next_field()
@@ -129,7 +129,7 @@ pub async fn list(
     jar: PrivateCookieJar,
     axum::extract::Query(q): axum::extract::Query<ListQuery>,
 ) -> Result<Json<FileList>> {
-    let uid = current_user_id(&jar)?;
+    let uid = current_user_id(&state, &jar).await?;
     let limit = q.limit.unwrap_or(50).min(200);
 
     let mut query = file_object::Entity::find()
@@ -160,7 +160,7 @@ pub async fn delete(
     jar: PrivateCookieJar,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
-    let uid = current_user_id(&jar)?;
+    let uid = current_user_id(&state, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
         .one(&state.db)
         .await?
@@ -183,7 +183,7 @@ pub async fn download(
     jar: PrivateCookieJar,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse> {
-    let uid = current_user_id(&jar)?;
+    let uid = current_user_id(&state, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
         .one(&state.db)
         .await?
@@ -227,7 +227,7 @@ pub async fn upload_json(
     input
         .validate()
         .map_err(|e| AppError::Validation(e.to_string()))?;
-    let uid = current_user_id(&jar)?;
+    let uid = current_user_id(&state, &jar).await?;
 
     let data = B64
         .decode(input.data_base64.as_bytes())
