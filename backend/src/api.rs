@@ -92,6 +92,34 @@ async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "status": "ok" }))
 }
 
+/// Readiness check — verifies the DB is reachable. Returns 503 on failure.
+/// Kubernetes/Docker can split liveness (/health) from readiness (/ready).
+async fn ready(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    use sea_orm::ConnectionTrait;
+    match state
+        .db
+        .query_one(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT 1".to_string(),
+        ))
+        .await
+    {
+        Ok(_) => (
+            axum::http::StatusCode::OK,
+            Json(serde_json::json!({"db":"ok"})),
+        )
+            .into_response(),
+        Err(e) => (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"db":"fail","error":e.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
 pub fn build(state: AppState, opts: BuildOpts) -> Router {
     let (api_router, openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(auth::signup))
@@ -148,6 +176,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
             .with_default_metrics()
             .build_pair();
 
+        let ready_state = state.clone();
         let limited = Router::new()
             .nest("/api", api_router)
             .merge(events::router().with_state(state))
@@ -162,6 +191,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
                 }),
             )
             .route("/health", get(health))
+            .route("/ready", get(ready).with_state(ready_state))
             .merge(limited)
             .route(
                 "/api-docs/openapi.json",
