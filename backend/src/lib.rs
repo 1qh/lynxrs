@@ -12,4 +12,5 @@ pub mod housekeeping;
 pub mod mailer;
 pub mod migration;
 pub mod state;
+pub mod tokens;
 pub mod api;
