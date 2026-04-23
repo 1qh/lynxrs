@@ -9,6 +9,7 @@ use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::{
     compression::CompressionLayer,
     cors::{AllowOrigin, CorsLayer},
+    limit::RequestBodyLimitLayer,
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
 };
@@ -225,6 +226,8 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
             .layer(SetRequestIdLayer::new(X_REQUEST_ID, MakeRequestUuid))
             .layer(axum::middleware::from_fn(security_headers))
             .layer(CompressionLayer::new())
+            // 64 MB request body cap (multipart upload path also has its own 50 MB enforcement)
+            .layer(RequestBodyLimitLayer::new(64 * 1024 * 1024))
             .layer(cors)
     } else {
         Router::new()
