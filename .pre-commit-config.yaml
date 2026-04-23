@@ -1,0 +1,31 @@
+# Run: `pre-commit install` once, then commits will be gated.
+# Hooks pinned; update with `pre-commit autoupdate`.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+        args: ["--config=.gitleaks.toml"]
+
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        language: system
+        entry: bash -c 'cd backend && cargo fmt --all -- --check'
+        pass_filenames: false
+        files: \.rs$
+
+      - id: cargo-clippy
+        name: cargo clippy
+        language: system
+        entry: bash -c 'cd backend && cargo clippy --all-targets --locked -- -D warnings'
+        pass_filenames: false
+        files: \.rs$
+
+      - id: tsc
+        name: bun tsc --noEmit
+        language: system
+        entry: bash -c 'cd frontend && bun run typecheck'
+        pass_filenames: false
+        files: \.(ts|tsx)$
