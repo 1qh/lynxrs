@@ -1,0 +1,47 @@
+[graph]
+targets = []
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = [
+  # Marvin attack in rsa via sqlx-mysql. sqlx-mysql is present because sqlx metapackage
+  # pulls it at compile time for macro verification, but runtime uses sqlx-postgres only.
+  { id = "RUSTSEC-2023-0071", reason = "sqlx-mysql not runtime-enabled; postgres only" },
+  # tokio-tar via testcontainers (dev-dependency only, never ships to prod).
+  { id = "RUSTSEC-2025-0111", reason = "dev-only via testcontainers, not in prod image" },
+  # paste unmaintained
+  { id = "RUSTSEC-2024-0436", reason = "paste unmaintained; no CVE; pervasive transitive" },
+  # rustls-pemfile unmaintained
+  { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile unmaintained; no CVE" },
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[licenses]
+version = 2
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "ISC",
+  "MIT",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "Zlib",
+  "CC0-1.0",
+  "OpenSSL",
+  "CDLA-Permissive-2.0",
+  "0BSD",
+]
+confidence-threshold = 0.8
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
