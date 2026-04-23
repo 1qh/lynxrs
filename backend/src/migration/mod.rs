@@ -5,6 +5,7 @@ mod m20260424_000002_create_file_objects;
 mod m20260424_000003_password_resets;
 mod m20260424_000004_email_ci_index;
 mod m20260424_000005_add_user_role;
+mod m20260424_000006_email_verification;
 
 pub struct Migrator;
 
@@ -17,6 +18,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260424_000003_password_resets::Migration),
             Box::new(m20260424_000004_email_ci_index::Migration),
             Box::new(m20260424_000005_add_user_role::Migration),
+            Box::new(m20260424_000006_email_verification::Migration),
         ]
     }
 }
