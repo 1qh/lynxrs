@@ -83,6 +83,7 @@ async fn main() -> anyhow::Result<()> {
                 email: Set(email_norm.clone()),
                 password_hash: Set(phc),
                 role: Set("admin".to_string()),
+                email_verified_at: Set(Some(now)),
                 created_at: Set(now),
                 updated_at: Set(now),
             }

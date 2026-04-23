@@ -15,7 +15,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    entity::{password_reset, user},
+    entity::{email_verification, password_reset, user},
     error::{AppError, Result},
     state::AppState,
 };
@@ -116,14 +116,121 @@ pub async fn signup(
         email: Set(email),
         password_hash: Set(password_hash),
         role: Set("user".to_string()),
+        email_verified_at: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
     }
     .insert(&state.db)
     .await?;
 
+    // Fire-and-forget email verification — skip failures to keep signup snappy.
+    if let Err(e) = enqueue_email_verification(&state, u.id, &u.email).await {
+        tracing::warn!(error=%e, "verification email enqueue failed");
+    }
+
     let jar = jar.add(issue_cookie(u.id));
     Ok((StatusCode::CREATED, jar, Json(UserDto::from(u))))
+}
+
+async fn enqueue_email_verification(
+    state: &AppState,
+    user_id: Uuid,
+    email: &str,
+) -> anyhow::Result<()> {
+    let raw = random_url_token();
+    let token_hash = sha256_hex(&raw);
+    let expires_at = chrono::Utc::now() + chrono::Duration::hours(48);
+
+    email_verification::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        token_hash: Set(token_hash),
+        expires_at: Set(expires_at),
+        used_at: Set(None),
+        created_at: Set(chrono::Utc::now()),
+    }
+    .insert(&state.db)
+    .await?;
+
+    let url = format!(
+        "{}/verify-email?token={raw}",
+        state.public_base_url.trim_end_matches('/')
+    );
+    state.mailer.send_email_verification(email, &url).await?;
+    Ok(())
+}
+
+#[derive(Deserialize, ToSchema, Validate)]
+pub struct VerifyEmailInput {
+    #[validate(length(min = 16, max = 256))]
+    pub token: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/auth/email/verify",
+    request_body = VerifyEmailInput,
+    responses((status = 204), (status = 400))
+)]
+pub async fn verify_email(
+    State(state): State<AppState>,
+    Json(input): Json<VerifyEmailInput>,
+) -> Result<StatusCode> {
+    input
+        .validate()
+        .map_err(|e| AppError::Validation(e.to_string()))?;
+    let token_hash = sha256_hex(&input.token);
+
+    let row = email_verification::Entity::find()
+        .filter(email_verification::Column::TokenHash.eq(&token_hash))
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::BadRequest("invalid token".into()))?;
+
+    if row.used_at.is_some() {
+        return Err(AppError::BadRequest("token already used".into()));
+    }
+    if row.expires_at < chrono::Utc::now() {
+        return Err(AppError::BadRequest("token expired".into()));
+    }
+
+    let u = user::Entity::find_by_id(row.user_id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let mut u_am: user::ActiveModel = u.into();
+    u_am.email_verified_at = Set(Some(chrono::Utc::now()));
+    u_am.updated_at = Set(chrono::Utc::now());
+    u_am.update(&state.db).await?;
+
+    let mut used: email_verification::ActiveModel = row.into();
+    used.used_at = Set(Some(chrono::Utc::now()));
+    used.update(&state.db).await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    post,
+    path = "/auth/email/resend",
+    responses((status = 202), (status = 401))
+)]
+pub async fn resend_verification(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+) -> Result<StatusCode> {
+    let uid = current_user_id(&jar)?;
+    let u = user::Entity::find_by_id(uid)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+    if u.email_verified_at.is_some() {
+        return Ok(StatusCode::ACCEPTED);
+    }
+    if let Err(e) = enqueue_email_verification(&state, u.id, &u.email).await {
+        tracing::warn!(error=%e, "verification email resend failed");
+    }
+    Ok(StatusCode::ACCEPTED)
 }
 
 #[utoipa::path(post, path = "/auth/login", request_body = LoginInput,
