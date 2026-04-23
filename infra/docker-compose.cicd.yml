@@ -1,0 +1,48 @@
+# Self-hosted CI: Forgejo (Gitea fork) + Forgejo runner.
+# Start: docker compose -f docker-compose.yml -f docker-compose.cicd.yml up -d forgejo
+# Initial setup: open http://localhost:3200 and complete the first-boot wizard
+# OR bake-in install via env and a small init script (skipped for spike).
+services:
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:10.0.0
+    container_name: simu-forgejo
+    restart: unless-stopped
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      FORGEJO__database__DB_TYPE: postgres
+      FORGEJO__database__HOST: postgres:5432
+      FORGEJO__database__NAME: forgejo
+      FORGEJO__database__USER: simu
+      FORGEJO__database__PASSWD: simu_dev
+      FORGEJO__server__ROOT_URL: http://localhost:3200/
+      FORGEJO__server__DOMAIN: localhost
+      FORGEJO__server__HTTP_PORT: "3000"
+      FORGEJO__server__SSH_PORT: "2222"
+      FORGEJO__service__DISABLE_REGISTRATION: "true"
+      FORGEJO__actions__ENABLED: "true"
+      FORGEJO__security__INSTALL_LOCK: "true"
+    ports:
+      - "3200:3000"
+      - "2222:22"
+    volumes:
+      - forgejo_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  forgejo-runner:
+    image: data.forgejo.org/forgejo/runner:6.2.2
+    container_name: simu-forgejo-runner
+    restart: unless-stopped
+    depends_on: [forgejo]
+    volumes:
+      - forgejo_runner_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Requires a one-time `forgejo-runner register` against a runner token from Forgejo admin.
+    # Done manually: `docker exec -it simu-forgejo-runner forgejo-runner register`
+    command: ["daemon"]
+
+volumes:
+  forgejo_data:
+  forgejo_runner_data:
