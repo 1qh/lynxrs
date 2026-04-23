@@ -66,6 +66,18 @@ sbom out="docs/SBOM.spdx.json":
 load:
   SIMU_BASE=http://127.0.0.1:8088 k6 run ops/load.k6.js
 
+# ────────── admin ──────────
+
+# Create an admin user: just admin-create you@example.com s3cret
+admin-create email password:
+  cd backend && DATABASE_URL=$(grep ^DATABASE_URL .env | cut -d= -f2-) \
+    cargo run --bin simu-admin -- create --email {{email}} --password {{password}}
+
+# Promote an existing user to admin: just admin-promote you@example.com
+admin-promote email:
+  cd backend && DATABASE_URL=$(grep ^DATABASE_URL .env | cut -d= -f2-) \
+    cargo run --bin simu-admin -- promote --email {{email}}
+
 # ────────── all ──────────
 
 ci:
