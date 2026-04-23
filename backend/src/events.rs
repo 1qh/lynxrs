@@ -14,7 +14,7 @@ use tokio::sync::broadcast;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::{auth::current_user_id, error::Result, state::AppState};
+use crate::{error::Result, state::AppState};
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
