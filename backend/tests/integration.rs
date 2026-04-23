@@ -195,6 +195,56 @@ async fn email_is_case_insensitive() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn logout_all_bumps_session_version_invalidating_old_cookies() {
+    let app = spawn_app().await;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let email = format!("la-{nonce}@example.com");
+
+    // signup on client A
+    let a = &app.client;
+    a.post(format!("{}/api/auth/signup", app.base))
+        .json(&serde_json::json!({ "email": email, "password": "hunter2hunter2" }))
+        .send()
+        .await
+        .unwrap();
+
+    // login on a fresh client B (simulating a second device)
+    let b = reqwest::Client::builder().cookie_store(true).build().unwrap();
+    let res = b
+        .post(format!("{}/api/auth/login", app.base))
+        .json(&serde_json::json!({ "email": email, "password": "hunter2hunter2" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    // B should now see /me as 200
+    let me_b = b
+        .get(format!("{}/api/auth/me", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(me_b.status(), StatusCode::OK);
+
+    // A calls logout-all → version bumps → B's cookie invalid
+    let lo = a
+        .post(format!("{}/api/auth/logout-all", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(lo.status(), StatusCode::NO_CONTENT);
+
+    let me_b2 = b
+        .get(format!("{}/api/auth/me", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(me_b2.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn delete_me_removes_account_and_revokes_login() {
     let app = spawn_app().await;
     let nonce = std::time::SystemTime::now()
