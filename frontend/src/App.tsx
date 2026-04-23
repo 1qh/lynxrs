@@ -104,6 +104,7 @@ function Home() {
   const [files, setFiles] = useState<FileDto[]>([])
   const [busy, setBusy] = useState(false)
   const [stats, setStats] = useState<AdminStats | null>(null)
+  const [shareUrl, setShareUrl] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     const { data } = await api.GET('/files', { params: { query: {} } })
@@ -164,6 +165,15 @@ function Home() {
     await api.POST('/auth/email/resend', {})
   }, [])
 
+  const share = useCallback(async (id: string) => {
+    const { data, error } = await api.POST('/files/{id}/shares', {
+      params: { path: { id } },
+      body: { ttl_hours: 24 },
+    })
+    if (error) { console.error('[share]', error); return }
+    setShareUrl((data as { url: string }).url)
+  }, [])
+
   const loadStats = useCallback(async () => {
     const { data } = await api.GET('/admin/stats', {})
     if (data) setStats(data as AdminStats)
@@ -199,13 +209,16 @@ function Home() {
           <text className="Muted">no files yet</text>
         ) : (
           files.map((f) => (
-            <view key={f.id} className="FileRow">
+            <view key={f.id} className="FileRow" bindtap={() => void share(f.id)}>
               <text className="FileName">{f.filename}</text>
-              <text className="FileMeta">{f.size_bytes}B · {f.content_type}</text>
+              <text className="FileMeta">{f.size_bytes}B · {f.content_type} · tap to share</text>
             </view>
           ))
         )}
       </view>
+      {shareUrl ? (
+        <text className="Muted">share: {shareUrl}</text>
+      ) : null}
       <view className="Button ButtonGhost" bindtap={logout}>
         <text className="ButtonText">Log out</text>
       </view>
