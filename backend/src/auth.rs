@@ -279,6 +279,18 @@ pub async fn me(State(state): State<AppState>, jar: PrivateCookieJar) -> Result<
     Ok(Json(UserDto::from(u)))
 }
 
+#[utoipa::path(delete, path = "/auth/me", responses((status = 204), (status = 401)))]
+pub async fn delete_me(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+) -> Result<impl IntoResponse> {
+    let uid = current_user_id(&jar)?;
+    // CASCADE FKs drop file_objects, password_resets, email_verifications.
+    user::Entity::delete_by_id(uid).exec(&state.db).await?;
+    let jar = jar.remove(Cookie::build(SESSION_COOKIE).path("/").build());
+    Ok((StatusCode::NO_CONTENT, jar))
+}
+
 #[derive(Deserialize, ToSchema, Validate)]
 pub struct ChangePasswordInput {
     #[validate(length(min = 1, max = 128))]
