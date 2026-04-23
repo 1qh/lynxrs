@@ -338,6 +338,45 @@ pub async fn download_share(
 }
 
 #[utoipa::path(
+    get,
+    path = "/files/{id}/shares",
+    responses((status = 200, body = [FileShareDto]), (status = 404))
+)]
+pub async fn list_shares(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Path(file_id): Path<Uuid>,
+) -> Result<Json<Vec<FileShareDto>>> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let row = file_object::Entity::find_by_id(file_id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if row.owner_id != uid {
+        return Err(AppError::NotFound);
+    }
+    let shares = file_share::Entity::find()
+        .filter(file_share::Column::FileId.eq(file_id))
+        .filter(file_share::Column::RevokedAt.is_null())
+        .order_by_desc(file_share::Column::CreatedAt)
+        .all(&state.db)
+        .await?;
+    Ok(Json(
+        shares
+            .into_iter()
+            .map(|s| FileShareDto {
+                id: s.id,
+                file_id: s.file_id,
+                url: String::new(),
+                expires_at: s.expires_at,
+                created_at: s.created_at,
+            })
+            .collect(),
+    ))
+}
+
+#[utoipa::path(
     delete,
     path = "/files/shares/{id}",
     responses((status = 204), (status = 404))

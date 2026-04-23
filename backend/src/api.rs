@@ -163,7 +163,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(files::list))
         .routes(routes!(files::download))
         .routes(routes!(files::delete))
-        .routes(routes!(files::create_share))
+        .routes(routes!(files::create_share, files::list_shares))
         .routes(routes!(files::download_share))
         .routes(routes!(files::revoke_share))
         .routes(routes!(admin::stats))
