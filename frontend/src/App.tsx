@@ -133,6 +133,11 @@ function Home() {
     setUser(null)
   }, [setUser])
 
+  const logoutAll = useCallback(async () => {
+    await api.POST('/auth/logout-all', {})
+    setUser(null)
+  }, [setUser])
+
   const upload = useCallback(async () => {
     setBusy(true)
     try {
@@ -203,6 +208,9 @@ function Home() {
       </view>
       <view className="Button ButtonGhost" bindtap={logout}>
         <text className="ButtonText">Log out</text>
+      </view>
+      <view className="Button ButtonGhost" bindtap={logoutAll}>
+        <text className="ButtonText">Log out all devices</text>
       </view>
     </view>
   )
