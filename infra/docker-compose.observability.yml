@@ -1,0 +1,83 @@
+# Layered compose for observability. Start with:
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+# Or standalone with --profile obs.
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: simu-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+
+  grafana:
+    image: grafana/grafana-oss:11.4.0
+    container_name: simu-grafana
+    restart: unless-stopped
+    depends_on: [prometheus, loki]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-simu_dev_grafana}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "3100:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+
+  loki:
+    image: grafana/loki:3.4.1
+    container_name: simu-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3101:3100"
+    volumes:
+      - loki_data:/loki
+
+  vector:
+    image: timberio/vector:0.44.0-alpine
+    container_name: simu-vector
+    restart: unless-stopped
+    depends_on: [loki]
+    volumes:
+      - ./vector.toml:/etc/vector/vector.toml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "8686:8686"
+
+  glitchtip:
+    image: glitchtip/glitchtip:v4.2
+    container_name: simu-glitchtip
+    restart: unless-stopped
+    depends_on: [postgres, redis]
+    environment:
+      DATABASE_URL: postgres://simu:simu_dev@postgres:5432/glitchtip
+      SECRET_KEY: ${GLITCHTIP_SECRET:-CHANGE_ME_LONG_RANDOM}
+      PORT: "8000"
+      EMAIL_URL: "consolemail://"
+      GLITCHTIP_DOMAIN: http://localhost:8000
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8200:8000"
+
+  redis:
+    image: valkey/valkey:8.0-alpine
+    container_name: simu-valkey
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - valkey_data:/data
+
+volumes:
+  prom_data:
+  grafana_data:
+  loki_data:
+  valkey_data:
