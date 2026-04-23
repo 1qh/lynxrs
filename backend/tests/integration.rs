@@ -195,6 +195,62 @@ async fn email_is_case_insensitive() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn change_password_rotates_hash_and_invalidates_old() {
+    let app = spawn_app().await;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let email = format!("chpw-{nonce}@example.com");
+
+    app.client
+        .post(format!("{}/api/auth/signup", app.base))
+        .json(&serde_json::json!({ "email": email, "password": "hunter2hunter2" }))
+        .send()
+        .await
+        .unwrap();
+
+    // Wrong current → 401
+    let r = app
+        .client
+        .post(format!("{}/api/auth/password/change", app.base))
+        .json(&serde_json::json!({ "current_password": "wrong", "new_password": "newpassword123" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+
+    // Correct current → 204
+    let r = app
+        .client
+        .post(format!("{}/api/auth/password/change", app.base))
+        .json(&serde_json::json!({ "current_password": "hunter2hunter2", "new_password": "newpassword123" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::NO_CONTENT);
+
+    // Old password → 401
+    let fresh = reqwest::Client::builder().cookie_store(true).build().unwrap();
+    let old = fresh
+        .post(format!("{}/api/auth/login", app.base))
+        .json(&serde_json::json!({ "email": email, "password": "hunter2hunter2" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(old.status(), StatusCode::UNAUTHORIZED);
+
+    // New password → 200
+    let newp = fresh
+        .post(format!("{}/api/auth/login", app.base))
+        .json(&serde_json::json!({ "email": email, "password": "newpassword123" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(newp.status(), StatusCode::OK);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs AWS SigV4 bucket-create helper; covered by Playwright against compose stack"]
 async fn signup_login_upload_list_round_trip() {
     // Kept as a marker for the full flow; reactivate once we add a pure-Rust SigV4 CreateBucket.
