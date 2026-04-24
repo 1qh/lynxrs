@@ -51,6 +51,13 @@ lint:
 audit:
   cd backend && cargo audit
   cd backend && cargo deny check --config deny.toml
+  cd backend && cargo machete
+
+# Chase upstream: bump every Rust pin to the latest version (spike policy).
+deps-bump:
+  cd backend && cargo upgrade --incompatible --pinned
+  cd backend && cargo clippy --all-targets --locked -- -D warnings
+  cd frontend && rm -f bun.lock && bun install
 
 secret-scan:
   gitleaks detect --source=. --no-banner --no-git --config=.gitleaks.toml
