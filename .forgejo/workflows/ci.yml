@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17.2-alpine
+        image: postgres:alpine
         env:
           POSTGRES_USER: simu
           POSTGRES_PASSWORD: simu

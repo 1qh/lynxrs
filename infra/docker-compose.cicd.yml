@@ -4,7 +4,7 @@
 # OR bake-in install via env and a small init script (skipped for spike).
 services:
   forgejo:
-    image: codeberg.org/forgejo/forgejo:10.0.0
+    image: codeberg.org/forgejo/forgejo:latest
     container_name: simu-forgejo
     restart: unless-stopped
     environment:
@@ -32,7 +32,7 @@ services:
         condition: service_healthy
 
   forgejo-runner:
-    image: data.forgejo.org/forgejo/runner:6.2.2
+    image: data.forgejo.org/forgejo/runner:latest
     container_name: simu-forgejo-runner
     restart: unless-stopped
     depends_on: [forgejo]

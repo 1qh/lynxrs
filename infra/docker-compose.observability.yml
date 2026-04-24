@@ -3,7 +3,7 @@
 # Or standalone with --profile obs.
 services:
   jaeger:
-    image: jaegertracing/all-in-one:1.62.0
+    image: jaegertracing/all-in-one:latest
     container_name: simu-jaeger
     restart: unless-stopped
     environment:
@@ -14,7 +14,7 @@ services:
       - "4318:4318"     # OTLP HTTP
 
   prometheus:
-    image: prom/prometheus:v2.55.1
+    image: prom/prometheus:latest
     container_name: simu-prometheus
     restart: unless-stopped
     volumes:
@@ -28,7 +28,7 @@ services:
       - "--storage.tsdb.retention.time=7d"
 
   grafana:
-    image: grafana/grafana-oss:11.4.0
+    image: grafana/grafana-oss:latest
     container_name: simu-grafana
     restart: unless-stopped
     depends_on: [prometheus, loki]
@@ -43,7 +43,7 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
 
   loki:
-    image: grafana/loki:3.4.1
+    image: grafana/loki:latest
     container_name: simu-loki
     restart: unless-stopped
     command: -config.file=/etc/loki/local-config.yaml
@@ -53,7 +53,7 @@ services:
       - loki_data:/loki
 
   vector:
-    image: timberio/vector:0.44.0-alpine
+    image: timberio/vector:alpine
     container_name: simu-vector
     restart: unless-stopped
     depends_on: [loki]
@@ -64,7 +64,7 @@ services:
       - "8686:8686"
 
   glitchtip:
-    image: glitchtip/glitchtip:v4.2
+    image: glitchtip/glitchtip:latest
     container_name: simu-glitchtip
     restart: unless-stopped
     depends_on: [postgres, redis]
@@ -79,7 +79,7 @@ services:
       - "8200:8000"
 
   redis:
-    image: valkey/valkey:8.0-alpine
+    image: valkey/valkey:alpine
     container_name: simu-valkey
     restart: unless-stopped
     ports:

@@ -41,23 +41,13 @@ async fn inject_request_id_into_errors(
     if !status.is_client_error() && !status.is_server_error() || !is_json {
         return res;
     }
-    // Guard: skip if body is unknown-sized or large.
-    let over_limit = res
-        .headers()
-        .get(axum::http::header::CONTENT_LENGTH)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.parse::<usize>().ok())
-        .map(|n| n > 256 * 1024)
-        .unwrap_or(false);
-    if over_limit {
-        return res;
-    }
     let (parts, body) = res.into_parts();
-    // Only touch small JSON errors; pass-through anything bigger untouched.
-    let bytes = match axum::body::to_bytes(body, 256 * 1024).await {
+    // Error JSON is always small; buffer without a ceiling. If we ever exceed
+    // something absurd, surface as an empty body and bump a counter.
+    let bytes = match axum::body::to_bytes(body, usize::MAX).await {
         Ok(b) => b,
         Err(_) => {
-            // Body too big — can't rewrite; reconstruct without rewrite.
+            metrics::counter!("simu_err_body_rewrite_failed_total").increment(1);
             return axum::response::Response::from_parts(parts, axum::body::Body::empty());
         }
     };

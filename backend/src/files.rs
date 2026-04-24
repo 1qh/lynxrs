@@ -625,7 +625,7 @@ pub async fn list_versions(
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
         .one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if row.owner_id != uid { return Err(AppError::NotFound); }
+    if !can_access(&state.db, uid, &row).await? { return Err(AppError::NotFound); }
     let rows = file_version::Entity::find()
         .filter(file_version::Column::FileId.eq(id))
         .order_by_desc(file_version::Column::VersionNo)
@@ -752,38 +752,52 @@ pub async fn bulk(
     Json(action): Json<BulkAction>,
 ) -> Result<Json<BulkResult>> {
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let org_ids = user_org_ids(&state.db, uid).await?;
+    // Fetch all requested rows; then keep those the user can access.
+    async fn resolve_accessible(
+        db: &sea_orm::DatabaseConnection,
+        uid: Uuid,
+        org_ids: &[Uuid],
+        ids: &[Uuid],
+    ) -> Result<Vec<file_object::Model>> {
+        let rows = file_object::Entity::find()
+            .filter(file_object::Column::Id.is_in(ids.to_vec()))
+            .all(db)
+            .await?;
+        Ok(rows.into_iter()
+            .filter(|r| r.owner_id == uid || r.org_id.map(|o| org_ids.contains(&o)).unwrap_or(false))
+            .collect())
+    }
     let now = chrono::Utc::now();
     let affected = match action {
         BulkAction::Delete { ids } => {
-            let res = file_object::Entity::update_many()
-                .col_expr(file_object::Column::DeletedAt, sea_orm::sea_query::Expr::value(Some(now)))
-                .filter(file_object::Column::OwnerId.eq(uid))
-                .filter(file_object::Column::Id.is_in(ids))
-                .filter(file_object::Column::DeletedAt.is_null())
-                .exec(&state.db).await?;
-            res.rows_affected
+            let rows = resolve_accessible(&state.db, uid, &org_ids, &ids).await?;
+            let mut n = 0u64;
+            for r in rows {
+                if r.deleted_at.is_some() { continue; }
+                let mut am: file_object::ActiveModel = r.into();
+                am.deleted_at = Set(Some(now));
+                if am.update(&state.db).await.is_ok() { n += 1; }
+            }
+            n
         }
         BulkAction::Purge { ids } => {
-            let rows = file_object::Entity::find()
-                .filter(file_object::Column::OwnerId.eq(uid))
-                .filter(file_object::Column::Id.is_in(ids))
-                .filter(file_object::Column::DeletedAt.is_not_null())
-                .all(&state.db).await?;
-            let mut count = 0u64;
+            let rows = resolve_accessible(&state.db, uid, &org_ids, &ids).await?;
+            let mut n = 0u64;
             for r in rows {
+                if r.deleted_at.is_none() { continue; }
+                // Only file owner may permanently purge.
+                if r.owner_id != uid { continue; }
                 let p = ObjPath::from(r.storage_key.clone());
                 let _ = state.storage.delete(&p).await;
                 if file_object::Entity::delete_by_id(r.id).exec(&state.db).await.is_ok() {
-                    count += 1;
+                    n += 1;
                 }
             }
-            count
+            n
         }
         BulkAction::Tag { ids, tag } => {
-            let rows = file_object::Entity::find()
-                .filter(file_object::Column::OwnerId.eq(uid))
-                .filter(file_object::Column::Id.is_in(ids))
-                .all(&state.db).await?;
+            let rows = resolve_accessible(&state.db, uid, &org_ids, &ids).await?;
             let mut n = 0u64;
             for r in rows {
                 let mut tags = r.tags.clone();
@@ -795,10 +809,7 @@ pub async fn bulk(
             n
         }
         BulkAction::Untag { ids, tag } => {
-            let rows = file_object::Entity::find()
-                .filter(file_object::Column::OwnerId.eq(uid))
-                .filter(file_object::Column::Id.is_in(ids))
-                .all(&state.db).await?;
+            let rows = resolve_accessible(&state.db, uid, &org_ids, &ids).await?;
             let mut n = 0u64;
             for r in rows {
                 let tags: Vec<String> = r.tags.iter().filter(|t| **t != tag).cloned().collect();
