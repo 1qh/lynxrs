@@ -126,17 +126,69 @@ pub async fn audit_all(
         .limit(500)
         .all(&state.db)
         .await?;
-    Ok(Json(
-        rows.into_iter()
-            .map(|r| AuditDto {
-                id: r.id,
-                user_id: r.user_id,
-                action: r.action,
-                ip: r.ip,
-                user_agent: r.user_agent,
-                meta: r.meta,
-                created_at: r.created_at,
-            })
-            .collect(),
-    ))
+    Ok(Json(audit_to_dtos(rows)))
 }
+
+fn audit_to_dtos(rows: Vec<audit_event::Model>) -> Vec<AuditDto> {
+    rows.into_iter()
+        .map(|r| AuditDto {
+            id: r.id,
+            user_id: r.user_id,
+            action: r.action,
+            ip: r.ip,
+            user_agent: r.user_agent,
+            meta: r.meta,
+            created_at: r.created_at,
+        })
+        .collect()
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/audit.csv",
+    responses((status = 200, content_type = "text/csv"), (status = 401))
+)]
+pub async fn audit_csv(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+) -> Result<axum::response::Response> {
+    use axum::response::IntoResponse;
+    require_admin(&state, &headers, &jar).await?;
+    let rows = audit_event::Entity::find()
+        .order_by_desc(audit_event::Column::CreatedAt)
+        .limit(10000)
+        .all(&state.db)
+        .await?;
+    let mut out = String::from("id,user_id,action,ip,user_agent,created_at\n");
+    for r in rows {
+        fn esc(s: &str) -> String {
+            if s.contains(',') || s.contains('"') || s.contains('\n') {
+                format!("\"{}\"", s.replace('"', "\"\""))
+            } else {
+                s.to_string()
+            }
+        }
+        out.push_str(&format!(
+            "{},{},{},{},{},{}\n",
+            r.id,
+            r.user_id.map(|u| u.to_string()).unwrap_or_default(),
+            esc(&r.action),
+            esc(r.ip.as_deref().unwrap_or("")),
+            esc(r.user_agent.as_deref().unwrap_or("")),
+            r.created_at.to_rfc3339(),
+        ));
+    }
+    Ok((
+        [
+            (axum::http::header::CONTENT_TYPE, "text/csv"),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                "attachment; filename=\"audit.csv\"",
+            ),
+        ],
+        out,
+    )
+        .into_response())
+}
+

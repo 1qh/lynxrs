@@ -178,6 +178,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(admin::stats))
         .routes(routes!(admin::list_users))
         .routes(routes!(admin::audit_all))
+        .routes(routes!(admin::audit_csv))
         .routes(routes!(tokens::create, tokens::list))
         .routes(routes!(tokens::revoke))
         .routes(routes!(audit::list_mine))
