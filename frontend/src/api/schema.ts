@@ -276,6 +276,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/files/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["bulk"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/files/json": {
         parameters: {
             query?: never;
@@ -768,6 +784,29 @@ export interface components {
             content_type: string;
             data_base64: string;
             filename: string;
+        };
+        BulkAction: {
+            /** @enum {string} */
+            action: "delete";
+            ids: string[];
+        } | {
+            /** @enum {string} */
+            action: "purge";
+            ids: string[];
+        } | {
+            /** @enum {string} */
+            action: "tag";
+            ids: string[];
+            tag: string;
+        } | {
+            /** @enum {string} */
+            action: "untag";
+            ids: string[];
+            tag: string;
+        };
+        BulkResult: {
+            /** Format: int64 */
+            affected: number;
         };
         ChangePasswordInput: {
             current_password: string;
@@ -1469,6 +1508,29 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    bulk: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkAction"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkResult"];
+                };
             };
         };
     };

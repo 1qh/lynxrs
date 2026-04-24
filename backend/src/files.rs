@@ -328,24 +328,15 @@ pub async fn list(
     if let Some(cursor) = q.cursor {
         query = query.filter(file_object::Column::CreatedAt.lt(cursor));
     }
-    if let Some(t) = q.tag.as_ref().filter(|s| !s.is_empty()) {
-        query = query.filter(sea_orm::sea_query::Expr::cust_with_values(
-            "tags @> ARRAY[$1]::text[]",
-            [t.clone()],
-        ));
-    }
-    if let Some(needle) = q.q.as_ref().filter(|s| !s.is_empty()) {
-        let pat = format!("%{}%", needle.replace('%', "\\%").replace('_', "\\_"));
-        let lowered = pat.to_lowercase();
-        query = query.filter(
-            sea_orm::sea_query::Expr::cust_with_values(
-                "LOWER(filename) LIKE $1",
-                [lowered],
-            ),
-        );
-    }
 
     let mut rows = query.all(&state.db).await?;
+    if let Some(t) = q.tag.as_ref().filter(|s| !s.is_empty()) {
+        rows.retain(|r| r.tags.iter().any(|x| x == t));
+    }
+    if let Some(needle) = q.q.as_ref().filter(|s| !s.is_empty()) {
+        let n = needle.to_lowercase();
+        rows.retain(|r| r.filename.to_lowercase().contains(&n));
+    }
     let has_more = rows.len() as u64 > limit;
     if has_more {
         rows.pop();
@@ -574,6 +565,89 @@ pub async fn restore_version(
     am.sha256 = Set(v.sha256);
     let updated = am.update(&state.db).await?;
     Ok(Json(FileDto::from(updated)))
+}
+
+#[derive(Deserialize, ToSchema)]
+#[serde(tag = "action", rename_all = "snake_case")]
+pub enum BulkAction {
+    Delete { ids: Vec<Uuid> },
+    Purge { ids: Vec<Uuid> },
+    Tag { ids: Vec<Uuid>, tag: String },
+    Untag { ids: Vec<Uuid>, tag: String },
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct BulkResult {
+    pub affected: u64,
+}
+
+#[utoipa::path(post, path = "/files/bulk", request_body = BulkAction,
+    responses((status = 200, body = BulkResult)))]
+pub async fn bulk(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Json(action): Json<BulkAction>,
+) -> Result<Json<BulkResult>> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let now = chrono::Utc::now();
+    let affected = match action {
+        BulkAction::Delete { ids } => {
+            let res = file_object::Entity::update_many()
+                .col_expr(file_object::Column::DeletedAt, sea_orm::sea_query::Expr::value(Some(now)))
+                .filter(file_object::Column::OwnerId.eq(uid))
+                .filter(file_object::Column::Id.is_in(ids))
+                .filter(file_object::Column::DeletedAt.is_null())
+                .exec(&state.db).await?;
+            res.rows_affected
+        }
+        BulkAction::Purge { ids } => {
+            let rows = file_object::Entity::find()
+                .filter(file_object::Column::OwnerId.eq(uid))
+                .filter(file_object::Column::Id.is_in(ids))
+                .filter(file_object::Column::DeletedAt.is_not_null())
+                .all(&state.db).await?;
+            let mut count = 0u64;
+            for r in rows {
+                let p = ObjPath::from(r.storage_key.clone());
+                let _ = state.storage.delete(&p).await;
+                if file_object::Entity::delete_by_id(r.id).exec(&state.db).await.is_ok() {
+                    count += 1;
+                }
+            }
+            count
+        }
+        BulkAction::Tag { ids, tag } => {
+            let rows = file_object::Entity::find()
+                .filter(file_object::Column::OwnerId.eq(uid))
+                .filter(file_object::Column::Id.is_in(ids))
+                .all(&state.db).await?;
+            let mut n = 0u64;
+            for r in rows {
+                let mut tags = r.tags.clone();
+                if !tags.contains(&tag) { tags.push(tag.clone()); }
+                let mut am: file_object::ActiveModel = r.into();
+                am.tags = Set(tags);
+                if am.update(&state.db).await.is_ok() { n += 1; }
+            }
+            n
+        }
+        BulkAction::Untag { ids, tag } => {
+            let rows = file_object::Entity::find()
+                .filter(file_object::Column::OwnerId.eq(uid))
+                .filter(file_object::Column::Id.is_in(ids))
+                .all(&state.db).await?;
+            let mut n = 0u64;
+            for r in rows {
+                let tags: Vec<String> = r.tags.iter().filter(|t| **t != tag).cloned().collect();
+                let mut am: file_object::ActiveModel = r.into();
+                am.tags = Set(tags);
+                if am.update(&state.db).await.is_ok() { n += 1; }
+            }
+            n
+        }
+    };
+    Ok(Json(BulkResult { affected }))
 }
 
 #[derive(Deserialize, ToSchema, Validate)]
