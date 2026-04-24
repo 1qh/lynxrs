@@ -355,3 +355,18 @@ pub async fn list_all_orgs(
         .all(&state.db).await?;
     Ok(axum::Json(rows.into_iter().map(crate::orgs::OrgDto::from).collect()))
 }
+
+#[utoipa::path(get, path = "/admin/webhooks",
+    responses((status = 200), (status = 401)))]
+pub async fn list_all_webhooks(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+) -> Result<axum::Json<Vec<crate::webhooks::WebhookDto>>> {
+    use crate::entity::webhook;
+    require_admin(&state, &headers, &jar).await?;
+    let rows = webhook::Entity::find()
+        .order_by_desc(webhook::Column::CreatedAt)
+        .all(&state.db).await?;
+    Ok(axum::Json(rows.into_iter().map(crate::webhooks::WebhookDto::from).collect()))
+}
