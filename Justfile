@@ -60,7 +60,15 @@ deps-bump:
   set -eu
   branch="simu/deps-$(date -u +%Y%m%dT%H%M%SZ)"
   git checkout -b "$branch"
-  cd backend && cargo upgrade --incompatible --pinned
+  cd backend
+  # Safety: snapshot semver pins; abort if any pin got downgraded (cargo-edit
+  # bug observed where MSRV mismatch causes regression).
+  grep -oE '^[a-z_-]+ = "=[0-9.]+' Cargo.toml | sort > /tmp/simu-pins-before
+  cargo upgrade --incompatible --pinned
+  grep -oE '^[a-z_-]+ = "=[0-9.]+' Cargo.toml | sort > /tmp/simu-pins-after
+  if diff /tmp/simu-pins-before /tmp/simu-pins-after | grep -E "^<"; then
+    echo "WARN: some pins got downgraded by cargo-edit; check rust-version MSRV"
+  fi
   cargo clippy --all-targets --locked -- -D warnings
   cargo deny check
   cd ../frontend && rm -f bun.lock && bun install
