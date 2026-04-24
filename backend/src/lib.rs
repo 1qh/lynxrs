@@ -2,6 +2,7 @@
 //! Integration tests consume `simu_backend::app` directly instead of #[path] re-declaring modules.
 
 pub mod admin;
+pub mod audit;
 pub mod auth;
 pub mod config;
 pub mod entity;

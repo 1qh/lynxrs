@@ -104,7 +104,7 @@ fn parse_session_cookie(jar: &PrivateCookieJar) -> Option<(Uuid, i32)> {
     responses((status = 201, body = UserDto), (status = 409)))]
 pub async fn signup(
     State(state): State<AppState>,
-    _headers: axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     Json(input): Json<SignupInput>,
 ) -> Result<impl IntoResponse> {
@@ -142,6 +142,7 @@ pub async fn signup(
         tracing::warn!(error=%e, "verification email enqueue failed");
     }
 
+    crate::audit::record(&state.db, Some(u.id), "signup", Some(&headers), serde_json::json!({})).await;
     let jar = jar.add(issue_cookie(u.id, u.session_version));
     Ok((StatusCode::CREATED, jar, Json(UserDto::from(u))))
 }
@@ -252,7 +253,7 @@ pub async fn resend_verification(
     responses((status = 200, body = UserDto), (status = 401)))]
 pub async fn login(
     State(state): State<AppState>,
-    _headers: axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     Json(input): Json<LoginInput>,
 ) -> Result<impl IntoResponse> {
@@ -261,16 +262,24 @@ pub async fn login(
         .map_err(|e| AppError::Validation(e.to_string()))?;
 
     let email = input.email.trim().to_lowercase();
-    let u = user::Entity::find()
+    let u = match user::Entity::find()
         .filter(user::Column::Email.eq(&email))
         .one(&state.db)
         .await?
-        .ok_or(AppError::Unauthorized)?;
+    {
+        Some(u) => u,
+        None => {
+            crate::audit::record(&state.db, None, "login_failed", Some(&headers), serde_json::json!({"email": email})).await;
+            return Err(AppError::Unauthorized);
+        }
+    };
 
     if !verify_password(input.password, u.password_hash.clone()).await? {
+        crate::audit::record(&state.db, Some(u.id), "login_failed", Some(&headers), serde_json::json!({})).await;
         return Err(AppError::Unauthorized);
     }
 
+    crate::audit::record(&state.db, Some(u.id), "login", Some(&headers), serde_json::json!({})).await;
     let jar = jar.add(issue_cookie(u.id, u.session_version));
     Ok((jar, Json(UserDto::from(u))))
 }

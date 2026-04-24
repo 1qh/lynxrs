@@ -10,6 +10,7 @@ mod m20260424_000007_session_version;
 mod m20260424_000008_api_tokens;
 mod m20260424_000009_file_shares;
 mod m20260424_000010_share_downloads;
+mod m20260424_000011_audit_log;
 
 pub struct Migrator;
 
@@ -27,6 +28,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260424_000008_api_tokens::Migration),
             Box::new(m20260424_000009_file_shares::Migration),
             Box::new(m20260424_000010_share_downloads::Migration),
+            Box::new(m20260424_000011_audit_log::Migration),
         ]
     }
 }
