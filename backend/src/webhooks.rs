@@ -2,7 +2,7 @@ use axum::{Json, extract::{Path, State}, http::HeaderMap, http::StatusCode};
 use axum_extra::extract::PrivateCookieJar;
 use hmac::{Hmac, Mac};
 use rand::Rng;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use utoipa::ToSchema;
@@ -10,7 +10,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    entity::webhook, error::{AppError, Result}, events::EventMsg, state::AppState,
+    entity::{webhook, webhook_delivery}, error::{AppError, Result}, events::EventMsg, state::AppState,
 };
 
 type HmacSha256 = Hmac<Sha256>;
@@ -99,6 +99,42 @@ pub async fn revoke_webhook(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Serialize, ToSchema)]
+pub struct DeliveryDto {
+    pub id: Uuid,
+    pub webhook_id: Uuid,
+    pub attempt: i32,
+    pub status: Option<i32>,
+    pub duration_ms: Option<i32>,
+    pub error: Option<String>,
+    pub event_kind: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[utoipa::path(get, path = "/webhooks/{id}/deliveries",
+    responses((status = 200, body = [DeliveryDto]), (status = 404)))]
+pub async fn list_deliveries(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<DeliveryDto>>> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let hook = webhook::Entity::find_by_id(id).one(&state.db).await?.ok_or(AppError::NotFound)?;
+    if hook.user_id != uid { return Err(AppError::NotFound); }
+    let rows = webhook_delivery::Entity::find()
+        .filter(webhook_delivery::Column::WebhookId.eq(id))
+        .order_by_desc(webhook_delivery::Column::CreatedAt)
+        .limit(200)
+        .all(&state.db)
+        .await?;
+    Ok(Json(rows.into_iter().map(|r| DeliveryDto {
+        id: r.id, webhook_id: r.webhook_id, attempt: r.attempt,
+        status: r.status, duration_ms: r.duration_ms, error: r.error,
+        event_kind: r.event_kind, created_at: r.created_at,
+    }).collect()))
+}
+
 pub fn spawn_dispatcher(state: AppState) {
     let mut rx = state.bus.subscribe();
     let client = reqwest::Client::builder()
@@ -107,11 +143,12 @@ pub fn spawn_dispatcher(state: AppState) {
         .expect("http client");
     tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
-            let (uid, body) = match &msg {
-                EventMsg::FileCreated { owner_id, .. }
-                | EventMsg::FileDeleted { owner_id, .. } => {
-                    let body = serde_json::to_string(&msg).unwrap_or_default();
-                    (*owner_id, body)
+            let (uid, body, kind) = match &msg {
+                EventMsg::FileCreated { owner_id, .. } => {
+                    (*owner_id, serde_json::to_string(&msg).unwrap_or_default(), "file_created")
+                }
+                EventMsg::FileDeleted { owner_id, .. } => {
+                    (*owner_id, serde_json::to_string(&msg).unwrap_or_default(), "file_deleted")
                 }
                 _ => continue,
             };
@@ -127,13 +164,16 @@ pub fn spawn_dispatcher(state: AppState) {
             for h in hooks {
                 let client = client.clone();
                 let body = body.clone();
+                let db = state.db.clone();
+                let kind = kind.to_string();
                 tokio::spawn(async move {
                     let mac = HmacSha256::new_from_slice(h.secret.as_bytes()).unwrap();
                     let mut m = mac.clone();
                     m.update(body.as_bytes());
                     let sig = hex::encode(m.finalize().into_bytes());
                     let mut delay_ms = 500u64;
-                    for attempt in 1..=4 {
+                    for attempt in 1..=4i32 {
+                        let started = std::time::Instant::now();
                         let send = client
                             .post(&h.url)
                             .header("content-type", "application/json")
@@ -142,6 +182,23 @@ pub fn spawn_dispatcher(state: AppState) {
                             .body(body.clone())
                             .send()
                             .await;
+                        let elapsed = started.elapsed().as_millis() as i32;
+                        let (status, err): (Option<i32>, Option<String>) = match &send {
+                            Ok(r) => (Some(r.status().as_u16() as i32), None),
+                            Err(e) => (None, Some(e.to_string())),
+                        };
+                        let _ = webhook_delivery::ActiveModel {
+                            id: Set(Uuid::now_v7()),
+                            webhook_id: Set(h.id),
+                            attempt: Set(attempt),
+                            status: Set(status),
+                            duration_ms: Set(Some(elapsed)),
+                            error: Set(err),
+                            event_kind: Set(kind.clone()),
+                            created_at: Set(chrono::Utc::now()),
+                        }
+                        .insert(&db)
+                        .await;
                         match send {
                             Ok(r) if r.status().is_success() => {
                                 metrics::counter!("simu_webhooks_delivered_total").increment(1);

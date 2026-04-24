@@ -18,6 +18,7 @@ mod m20260424_000015_login_lockout;
 mod m20260424_000016_mfa_recovery;
 mod m20260424_000017_soft_delete;
 mod m20260424_000018_file_tags;
+mod m20260424_000019_webhook_deliveries;
 
 pub struct Migrator;
 
@@ -43,6 +44,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260424_000016_mfa_recovery::Migration),
             Box::new(m20260424_000017_soft_delete::Migration),
             Box::new(m20260424_000018_file_tags::Migration),
+            Box::new(m20260424_000019_webhook_deliveries::Migration),
         ]
     }
 }

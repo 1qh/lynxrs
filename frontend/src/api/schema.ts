@@ -320,7 +320,7 @@ export interface paths {
         post?: never;
         delete: operations["delete"];
         options?: never;
-        head?: never;
+        head: operations["head_file"];
         patch: operations["rename"];
         trace?: never;
     };
@@ -628,6 +628,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/webhooks/{id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_deliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -689,6 +705,22 @@ export interface components {
         };
         CreateWebhookInput: {
             url: string;
+        };
+        DeliveryDto: {
+            /** Format: int32 */
+            attempt: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: int32 */
+            duration_ms?: number | null;
+            error?: string | null;
+            event_kind: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: int32 */
+            status?: number | null;
+            /** Format: uuid */
+            webhook_id: string;
         };
         EnrollDto: {
             otpauth_url: string;
@@ -1435,6 +1467,31 @@ export interface operations {
             };
         };
     };
+    head_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     rename: {
         parameters: {
             query?: never;
@@ -2038,6 +2095,33 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_deliveries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryDto"][];
+                };
             };
             404: {
                 headers: {

@@ -85,6 +85,7 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         webhooks::WebhookDto,
         webhooks::WebhookCreated,
         webhooks::CreateWebhookInput,
+        webhooks::DeliveryDto,
     )),
     tags((name = "simu", description = "Simu SaaS API"))
 )]
@@ -214,6 +215,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(mfa::generate_recovery_codes))
         .routes(routes!(webhooks::create_webhook, webhooks::list_webhooks))
         .routes(routes!(webhooks::revoke_webhook))
+        .routes(routes!(webhooks::list_deliveries))
         .with_state(state.clone())
         .split_for_parts();
 

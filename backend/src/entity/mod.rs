@@ -7,3 +7,4 @@ pub mod file_share;
 pub mod password_reset;
 pub mod user;
 pub mod webhook;
+pub mod webhook_delivery;
