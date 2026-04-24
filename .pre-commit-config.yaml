@@ -34,9 +34,9 @@ repos:
       # Every commit bumps Rust pins to latest; if the bump breaks clippy or
       # builds, the commit is REJECTED (fix the breakage, then re-commit).
       - id: cargo-upgrade-latest
-        name: cargo upgrade --incompatible --pinned (strict)
+        name: cargo upgrade --incompatible --pinned (strict; offline-skip)
         language: system
-        entry: bash -c "cd backend && cargo upgrade --incompatible --pinned && cargo clippy --release --all-targets --locked -- -D warnings && git add Cargo.toml Cargo.lock"
+        entry: bash -c "cd backend && if curl -sfI -m 3 https://crates.io >/dev/null; then cargo upgrade --incompatible --pinned && git add Cargo.toml Cargo.lock; else echo '[deps] offline, skipping cargo upgrade'; fi && cargo clippy --release --all-targets --locked -- -D warnings"
         pass_filenames: false
         files: '^backend/(Cargo\.toml|Cargo\.lock|src/.*\.rs)$'
 

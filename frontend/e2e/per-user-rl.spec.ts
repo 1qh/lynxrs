@@ -13,15 +13,22 @@ test('per-user rate limit returns 429 rate_limited', async () => {
   }
 
   const port = 8089
+  const dbName = `simu_rl_${Date.now()}`
   const envText = execSync('cat /Users/o/simu/backend/.env').toString()
   const baseEnv: Record<string, string> = { ...(process.env as Record<string, string>) }
   for (const line of envText.split('\n')) {
     const m = line.match(/^([A-Z][A-Z0-9_]*)=(.*)$/)
     if (m) baseEnv[m[1]!] = m[2]!
   }
+  // Create an isolated database so concurrent spec runs can't collide.
+  execSync(
+    `docker exec -e PGPASSWORD=simu_dev simu-postgres psql -U simu -d postgres -c "CREATE DATABASE ${dbName} OWNER simu"`,
+    { stdio: 'pipe' },
+  )
   const env = {
     ...baseEnv,
     BIND_ADDR: `127.0.0.1:${port}`,
+    DATABASE_URL: `postgres://simu:simu_dev@localhost:5533/${dbName}`,
     PER_USER_RPS: '2',
     RATE_LIMIT_RPS: '1000',
     RATE_LIMIT_BURST: '2000',
@@ -85,6 +92,13 @@ test('per-user rate limit returns 429 rate_limited', async () => {
         const t = setTimeout(() => { try { proc.kill('SIGKILL') } catch {}; r() }, 2000)
         proc.on('exit', () => { clearTimeout(t); r() })
       })
+    } catch {}
+    // Drop the isolated database.
+    try {
+      execSync(
+        `docker exec -e PGPASSWORD=simu_dev simu-postgres psql -U simu -d postgres -c "DROP DATABASE IF EXISTS ${dbName}"`,
+        { stdio: 'pipe' },
+      )
     } catch {}
   }
 })

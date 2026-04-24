@@ -13,7 +13,10 @@ fi
 
 cd "$(dirname "$0")/.."
 if grep -qE '^rust-version = ' Cargo.toml; then
-  sed -i '' -E "s|^rust-version = \"[0-9.]+\"|rust-version = \"$VER\"|" Cargo.toml
+  # Portable in-place edit (avoids BSD/GNU `sed -i` divergence).
+  tmp="$(mktemp)"
+  sed -E "s|^rust-version = \"[0-9.]+\"|rust-version = \"$VER\"|" Cargo.toml > "$tmp"
+  mv "$tmp" Cargo.toml
   echo "rust-version → $VER"
 else
   echo "no rust-version in Cargo.toml — nothing to update" >&2

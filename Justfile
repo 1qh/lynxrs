@@ -95,10 +95,12 @@ secret-scan:
 trivy:
   trivy image --severity HIGH,CRITICAL --no-progress simu-backend:dev
 
-sbom out="docs/SBOM.spdx.json":
-  docker save simu-backend:dev -o /tmp/simu-backend.tar
-  syft /tmp/simu-backend.tar -o spdx-json={{out}}
+sbom:
+  docker save simu-backend:rolling -o /tmp/simu-backend.tar
+  syft /tmp/simu-backend.tar -o spdx-json=docs/SBOM.spdx.json
   rm -f /tmp/simu-backend.tar
+  cd backend && cargo cyclonedx --format json
+  mv backend/simu-backend.cdx.json docs/SBOM.cdx.json
 
 load:
   SIMU_BASE=http://127.0.0.1:8088 k6 run ops/load.k6.js
