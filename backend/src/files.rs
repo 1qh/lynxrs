@@ -116,6 +116,37 @@ pub async fn rename(
     Ok(Json(FileDto::from(updated)))
 }
 
+#[derive(Serialize, ToSchema)]
+pub struct VerifyDto {
+    pub ok: bool,
+    pub stored: Option<String>,
+    pub computed: String,
+}
+
+#[utoipa::path(post, path = "/files/{id}/verify",
+    responses((status = 200, body = VerifyDto), (status = 404)))]
+pub async fn verify(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+) -> Result<Json<VerifyDto>> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let row = file_object::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if row.owner_id != uid {
+        return Err(AppError::NotFound);
+    }
+    let obj_path = ObjPath::from(row.storage_key.clone());
+    let result = state.storage.get(&obj_path).await?;
+    let bytes = result.bytes().await?;
+    let computed = hex::encode(sha2::Sha256::digest(&bytes));
+    let ok = row.sha256.as_deref() == Some(computed.as_str());
+    Ok(Json(VerifyDto { ok, stored: row.sha256, computed }))
+}
+
 #[utoipa::path(get, path = "/me/quota", responses((status = 200, body = QuotaDto)))]
 pub async fn quota(
     State(state): State<AppState>,
