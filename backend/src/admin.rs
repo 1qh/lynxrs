@@ -1,12 +1,13 @@
 use axum::{Json, extract::State};
 use axum_extra::extract::PrivateCookieJar;
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, Statement};
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Statement};
 use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::{
+    audit::AuditDto,
     auth::authenticate,
-    entity::{file_object, user},
+    entity::{audit_event, file_object, user},
     error::{AppError, Result},
     state::AppState,
 };
@@ -107,4 +108,35 @@ pub async fn list_users(
         .all(&state.db)
         .await?;
     Ok(Json(rows.into_iter().map(UserSummary::from).collect()))
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/audit",
+    responses((status = 200, body = [AuditDto]), (status = 401))
+)]
+pub async fn audit_all(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+) -> Result<Json<Vec<AuditDto>>> {
+    require_admin(&state, &headers, &jar).await?;
+    let rows = audit_event::Entity::find()
+        .order_by_desc(audit_event::Column::CreatedAt)
+        .limit(500)
+        .all(&state.db)
+        .await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|r| AuditDto {
+                id: r.id,
+                user_id: r.user_id,
+                action: r.action,
+                ip: r.ip,
+                user_agent: r.user_agent,
+                meta: r.meta,
+                created_at: r.created_at,
+            })
+            .collect(),
+    ))
 }

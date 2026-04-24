@@ -4,6 +4,22 @@
  */
 
 export interface paths {
+    "/admin/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["audit_all"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/stats": {
         parameters: {
             query?: never;
@@ -441,6 +457,8 @@ export interface components {
             ip?: string | null;
             meta: unknown;
             user_agent?: string | null;
+            /** Format: uuid */
+            user_id?: string | null;
         };
         Base64UploadInput: {
             content_type: string;
@@ -567,6 +585,31 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    audit_all: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditDto"][];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     stats: {
         parameters: {
             query?: never;

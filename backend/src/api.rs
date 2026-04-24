@@ -174,6 +174,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(files::revoke_share))
         .routes(routes!(admin::stats))
         .routes(routes!(admin::list_users))
+        .routes(routes!(admin::audit_all))
         .routes(routes!(tokens::create, tokens::list))
         .routes(routes!(tokens::revoke))
         .routes(routes!(audit::list_mine))
@@ -224,7 +225,21 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         let limited = Router::new()
             .nest("/api", api_router)
             .merge(events::router().with_state(state))
-            .layer(GovernorLayer::new(governor_conf));
+            .layer(GovernorLayer::new(governor_conf).error_handler(|err| {
+                use axum::response::IntoResponse;
+                let (status, code) = match err {
+                    tower_governor::GovernorError::TooManyRequests { .. } => {
+                        (axum::http::StatusCode::TOO_MANY_REQUESTS, "rate_limited")
+                    }
+                    _ => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "internal"),
+                };
+                (
+                    status,
+                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                    Json(serde_json::json!({"code": code, "message": err.to_string()})),
+                )
+                    .into_response()
+            }));
 
         Router::new()
             .route(

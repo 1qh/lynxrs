@@ -37,6 +37,7 @@ pub async fn record(
 #[derive(Serialize, ToSchema)]
 pub struct AuditDto {
     pub id: Uuid,
+    pub user_id: Option<Uuid>,
     pub action: String,
     pub ip: Option<String>,
     pub user_agent: Option<String>,
@@ -61,6 +62,7 @@ pub async fn list_mine(
         rows.into_iter()
             .map(|r| AuditDto {
                 id: r.id,
+                user_id: r.user_id,
                 action: r.action,
                 ip: r.ip,
                 user_agent: r.user_agent,
