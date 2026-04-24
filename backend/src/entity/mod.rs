@@ -5,6 +5,7 @@ pub mod file_object;
 pub mod mfa_recovery;
 pub mod membership;
 pub mod org;
+pub mod org_invite;
 pub mod file_share;
 pub mod file_version;
 pub mod password_reset;

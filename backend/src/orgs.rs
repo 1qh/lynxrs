@@ -7,10 +7,11 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    entity::{membership, org, user},
+    entity::{membership, org, org_invite, user},
     error::{AppError, Result},
     state::AppState,
 };
+use sha2::Digest;
 
 #[derive(Serialize, ToSchema)]
 pub struct OrgDto {
@@ -183,6 +184,156 @@ pub async fn add_member(
     Ok((StatusCode::CREATED, Json(MemberDto {
         user_id: m.user_id, email, role: m.role, created_at: m.created_at,
     })))
+}
+
+#[derive(Deserialize, ToSchema, Validate)]
+pub struct InviteInput {
+    #[validate(email)]
+    pub email: String,
+    #[serde(default = "default_member_role")]
+    pub role: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct InviteCreated {
+    pub id: Uuid,
+    pub url: String,
+}
+
+fn sha256_hex(s: &str) -> String {
+    hex::encode(sha2::Sha256::digest(s.as_bytes()))
+}
+
+fn random_invite_token() -> String {
+    use argon2::password_hash::rand_core::{OsRng, RngCore};
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    let mut b = [0u8; 32];
+    OsRng.fill_bytes(&mut b);
+    URL_SAFE_NO_PAD.encode(b)
+}
+
+#[utoipa::path(post, path = "/orgs/{id}/invites", request_body = InviteInput,
+    responses((status = 201, body = InviteCreated), (status = 404)))]
+pub async fn create_invite(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+    Json(input): Json<InviteInput>,
+) -> Result<(StatusCode, Json<InviteCreated>)> {
+    input.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let caller = require_member(&state.db, id, uid).await?;
+    if !matches!(caller.role.as_str(), "owner" | "admin") {
+        return Err(AppError::Unauthorized);
+    }
+    let role = match input.role.as_str() {
+        "owner" | "admin" | "member" => input.role,
+        _ => return Err(AppError::BadRequest("role must be owner|admin|member".into())),
+    };
+    let raw = random_invite_token();
+    let token_hash = sha256_hex(&raw);
+    let m = org_invite::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        org_id: Set(id),
+        email: Set(input.email.trim().to_lowercase()),
+        role: Set(role),
+        token_hash: Set(token_hash),
+        expires_at: Set(chrono::Utc::now() + chrono::Duration::days(14)),
+        accepted_at: Set(None),
+        created_at: Set(chrono::Utc::now()),
+    }.insert(&state.db).await?;
+    let url = format!(
+        "{}/invite?token={raw}",
+        state.public_base_url.trim_end_matches('/')
+    );
+    // Fire-and-forget email
+    {
+        let mailer = state.mailer.clone();
+        let to = m.email.clone();
+        let url_c = url.clone();
+        tokio::spawn(async move {
+            let body = format!("You've been invited to join a simu organization.\n\n  Accept: {url_c}\n\n(This link expires in 14 days.)");
+            if let Err(e) = mailer.send_share_link(&to, &url_c, "simu organization invite").await {
+                tracing::warn!(error=%e, "invite email failed");
+            }
+            let _ = body;
+        });
+    }
+    Ok((StatusCode::CREATED, Json(InviteCreated { id: m.id, url })))
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct InvitePreview {
+    pub org: OrgDto,
+    pub email: String,
+    pub role: String,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[utoipa::path(get, path = "/invites/{token}",
+    responses((status = 200, body = InvitePreview), (status = 404)))]
+pub async fn preview_invite(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+) -> Result<Json<InvitePreview>> {
+    let hash = sha256_hex(&token);
+    let inv = org_invite::Entity::find()
+        .filter(org_invite::Column::TokenHash.eq(hash))
+        .filter(org_invite::Column::AcceptedAt.is_null())
+        .one(&state.db).await?
+        .ok_or(AppError::NotFound)?;
+    if inv.expires_at < chrono::Utc::now() {
+        return Err(AppError::BadRequest("invite expired".into()));
+    }
+    let o = org::Entity::find_by_id(inv.org_id).one(&state.db).await?
+        .ok_or(AppError::NotFound)?;
+    Ok(Json(InvitePreview {
+        org: OrgDto::from(o), email: inv.email, role: inv.role, expires_at: inv.expires_at,
+    }))
+}
+
+#[utoipa::path(post, path = "/invites/{token}/accept",
+    responses((status = 200, body = MemberDto), (status = 404), (status = 400)))]
+pub async fn accept_invite(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: PrivateCookieJar,
+    Path(token): Path<String>,
+) -> Result<Json<MemberDto>> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let hash = sha256_hex(&token);
+    let inv = org_invite::Entity::find()
+        .filter(org_invite::Column::TokenHash.eq(hash))
+        .filter(org_invite::Column::AcceptedAt.is_null())
+        .one(&state.db).await?
+        .ok_or(AppError::NotFound)?;
+    if inv.expires_at < chrono::Utc::now() {
+        return Err(AppError::BadRequest("invite expired".into()));
+    }
+    let u = user::Entity::find_by_id(uid).one(&state.db).await?.ok_or(AppError::Unauthorized)?;
+    if u.email.to_lowercase() != inv.email {
+        return Err(AppError::BadRequest("invite email mismatch".into()));
+    }
+    if membership::Entity::find()
+        .filter(membership::Column::OrgId.eq(inv.org_id))
+        .filter(membership::Column::UserId.eq(uid))
+        .one(&state.db).await?
+        .is_some()
+    {
+        return Err(AppError::Conflict("already a member".into()));
+    }
+    let m = membership::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        org_id: Set(inv.org_id),
+        user_id: Set(uid),
+        role: Set(inv.role.clone()),
+        created_at: Set(chrono::Utc::now()),
+    }.insert(&state.db).await?;
+    let mut am: org_invite::ActiveModel = inv.into();
+    am.accepted_at = Set(Some(chrono::Utc::now()));
+    am.update(&state.db).await?;
+    Ok(Json(MemberDto { user_id: m.user_id, email: u.email, role: m.role, created_at: m.created_at }))
 }
 
 #[utoipa::path(delete, path = "/orgs/{id}/members/{user_id}",
