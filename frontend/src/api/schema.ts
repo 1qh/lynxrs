@@ -558,7 +558,7 @@ export interface paths {
         get: operations["list_trash"];
         put?: never;
         post?: never;
-        delete?: never;
+        delete: operations["empty_trash"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1900,6 +1900,24 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["FileList"];
                 };
+            };
+        };
+    };
+    empty_trash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description number of files purged */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

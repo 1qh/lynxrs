@@ -411,6 +411,29 @@ pub async fn restore(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(delete, path = "/trash",
+    responses((status = 200, description = "number of files purged")))]
+pub async fn empty_trash(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+) -> Result<Json<serde_json::Value>> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let rows = file_object::Entity::find()
+        .filter(file_object::Column::OwnerId.eq(uid))
+        .filter(file_object::Column::DeletedAt.is_not_null())
+        .all(&state.db)
+        .await?;
+    let mut purged = 0;
+    for r in rows {
+        let p = ObjPath::from(r.storage_key.clone());
+        let _ = state.storage.delete(&p).await;
+        let _ = file_object::Entity::delete_by_id(r.id).exec(&state.db).await;
+        purged += 1;
+    }
+    Ok(Json(serde_json::json!({ "purged": purged })))
+}
+
 #[utoipa::path(delete, path = "/trash/{id}",
     responses((status = 204), (status = 404)))]
 pub async fn purge(

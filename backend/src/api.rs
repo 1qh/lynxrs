@@ -188,7 +188,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(files::list))
         .routes(routes!(files::quota))
         .routes(routes!(files::verify))
-        .routes(routes!(files::list_trash))
+        .routes(routes!(files::list_trash, files::empty_trash))
         .routes(routes!(files::restore))
         .routes(routes!(files::purge))
         .routes(routes!(files::add_tag))
