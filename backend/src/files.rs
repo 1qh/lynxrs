@@ -194,6 +194,8 @@ pub struct ListQuery {
     pub limit: Option<u64>,
     /// Cursor = most-recently-seen `created_at` RFC3339 timestamp. Returns rows strictly older.
     pub cursor: Option<chrono::DateTime<chrono::Utc>>,
+    /// Case-insensitive filename substring filter.
+    pub q: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -223,6 +225,16 @@ pub async fn list(
         .limit(limit + 1);
     if let Some(cursor) = q.cursor {
         query = query.filter(file_object::Column::CreatedAt.lt(cursor));
+    }
+    if let Some(needle) = q.q.as_ref().filter(|s| !s.is_empty()) {
+        let pat = format!("%{}%", needle.replace('%', "\\%").replace('_', "\\_"));
+        let lowered = pat.to_lowercase();
+        query = query.filter(
+            sea_orm::sea_query::Expr::cust_with_values(
+                "LOWER(filename) LIKE $1",
+                [lowered],
+            ),
+        );
     }
 
     let mut rows = query.all(&state.db).await?;
