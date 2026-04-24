@@ -113,6 +113,7 @@ function Home() {
   const [trash, setTrash] = useState<FileDto[]>([])
   const [orgs, setOrgs] = useState<Array<{ id: string; name: string; slug: string }>>([])
   const [displayName, setDisplayName] = useState<string>(user.display_name ?? '')
+  const [starred, setStarred] = useState<FileDto[]>([])
 
   const refresh = useCallback(async () => {
     const { data } = await api.GET('/files', { params: { query: {} } })
@@ -181,6 +182,16 @@ function Home() {
     if (error) { console.error('[share]', error); return }
     setShareUrl((data as { url: string }).url)
   }, [])
+
+  const refreshStarred = useCallback(async () => {
+    const { data } = await api.GET('/files/starred', {})
+    if (data) setStarred(data as FileDto[])
+  }, [])
+
+  const toggleStar = useCallback(async (id: string) => {
+    await api.POST('/files/{id}/star', { params: { path: { id } } })
+    void refreshStarred()
+  }, [refreshStarred])
 
   const saveProfile = useCallback(async () => {
     const name = displayName || 'Alice'
@@ -284,9 +295,12 @@ function Home() {
           <text className="Muted">no files yet</text>
         ) : (
           files.map((f) => (
-            <view key={f.id} className="FileRow" bindtap={() => void share(f.id)}>
-              <text className="FileName">{f.filename}</text>
-              <text className="FileMeta">{f.size_bytes}B · {f.content_type} · tap to share</text>
+            <view key={f.id} className="FileRow">
+              <text className="FileName" bindtap={() => void share(f.id)}>{f.filename}</text>
+              <text className="FileMeta">{f.size_bytes}B · {f.content_type}</text>
+              <view className="Button ButtonGhost" bindtap={() => void toggleStar(f.id)}>
+                <text className="ButtonText">⭐</text>
+              </view>
             </view>
           ))
         )}
@@ -297,6 +311,9 @@ function Home() {
       <text className="Muted">display_name: {user.display_name ?? '—'}</text>
       <view className="Button ButtonGhost" bindtap={saveProfile}>
         <text className="ButtonText">Save profile (sets "Alice")</text>
+      </view>
+      <view className="Button ButtonGhost" bindtap={refreshStarred}>
+        <text className="ButtonText">Load starred ({starred.length})</text>
       </view>
       <view className="Button ButtonGhost" bindtap={refreshOrgs}>
         <text className="ButtonText">Load orgs ({orgs.length})</text>

@@ -53,6 +53,26 @@ const MAX_FILE_BYTES: usize = 50 * 1024 * 1024; // 50 MB cap for spike
 const USER_QUOTA_BYTES: i64 = 500 * 1024 * 1024; // 500 MB per user
 const ORG_QUOTA_BYTES: i64 = 5 * 1024 * 1024 * 1024; // 5 GB per org
 
+fn image_magic_ok(claimed: &str, data: &[u8]) -> bool {
+    if !claimed.starts_with("image/") { return true; }
+    if data.len() < 12 { return false; }
+    // PNG: 89 50 4E 47
+    if data.starts_with(b"\x89PNG") { return claimed.contains("png"); }
+    // JPEG: FF D8 FF
+    if data.starts_with(b"\xff\xd8\xff") { return claimed.contains("jpeg") || claimed.contains("jpg"); }
+    // GIF: GIF87a / GIF89a
+    if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") { return claimed.contains("gif"); }
+    // WebP: RIFF....WEBP
+    if &data[0..4] == b"RIFF" && &data[8..12] == b"WEBP" { return claimed.contains("webp"); }
+    // AVIF/HEIC etc: ftypavif / ftypheic in bytes 4..12
+    if data.len() >= 12 && &data[4..8] == b"ftyp" {
+        let brand = &data[8..12];
+        if brand == b"avif" { return claimed.contains("avif"); }
+        if brand == b"heic" || brand == b"heif" { return claimed.contains("heic") || claimed.contains("heif"); }
+    }
+    false
+}
+
 async fn enforce_org_quota(
     db: &sea_orm::DatabaseConnection,
     org_id: Uuid,
@@ -1398,6 +1418,9 @@ pub async fn upload_json(
         return Err(AppError::BadRequest(format!(
             "file too large: max {MAX_FILE_BYTES} bytes"
         )));
+    }
+    if !image_magic_ok(&input.content_type, &data) {
+        return Err(AppError::BadRequest("image magic-byte check failed".into()));
     }
     enforce_quota(&state.db, uid, data.len() as i64).await?;
 
