@@ -13,11 +13,16 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
 COPY --from=planner /build/recipe.json recipe.json
-# Cook dependencies (layer is reused as long as recipe.json is identical).
-RUN cargo chef cook --release --recipe-path recipe.json
+# Cook dependencies. BuildKit cache mounts keep the cargo registry and target
+# dir warm across builds; falls back to layer-only caching on classic builder.
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/build/target \
+    cargo chef cook --release --recipe-path recipe.json
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-RUN cargo build --release --locked --bin simu-backend && \
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/build/target \
+    cargo build --release --locked --bin simu-backend && \
     cp target/release/simu-backend /simu-backend
 
 FROM alpine:latest
