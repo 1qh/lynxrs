@@ -328,7 +328,7 @@ pub async fn download(
 
     let obj_path = ObjPath::from(row.storage_key.clone());
     let result = state.storage.get(&obj_path).await?;
-    let bytes = result.bytes().await?;
+    let body = axum::body::Body::from_stream(result.into_stream());
 
     Ok((
         [
@@ -337,8 +337,12 @@ pub async fn download(
                 axum::http::header::CONTENT_DISPOSITION,
                 format!("attachment; filename=\"{}\"", row.filename),
             ),
+            (
+                axum::http::header::CONTENT_LENGTH,
+                row.size_bytes.to_string(),
+            ),
         ],
-        bytes,
+        body,
     ))
 }
 
