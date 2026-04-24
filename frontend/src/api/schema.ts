@@ -813,6 +813,7 @@ export interface components {
             new_password: string;
         };
         CreateShareInput: {
+            password?: string | null;
             /**
              * Format: int64
              * @description Optional expiry in hours (default 24, max 720 = 30 days).
@@ -2167,7 +2168,10 @@ export interface operations {
     };
     download_share: {
         parameters: {
-            query?: never;
+            query?: {
+                inline?: boolean | null;
+                password?: string | null;
+            };
             header?: never;
             path: {
                 token: string;
@@ -2177,6 +2181,12 @@ export interface operations {
         requestBody?: never;
         responses: {
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -13,6 +13,8 @@ pub struct Model {
     pub created_at: ChronoDateTimeUtc,
     pub revoked_at: Option<ChronoDateTimeUtc>,
     pub download_count: i64,
+    #[serde(skip_serializing)]
+    pub password_hash: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

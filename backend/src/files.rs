@@ -939,6 +939,8 @@ pub struct FileShareDto {
 
 #[derive(Deserialize, ToSchema, Validate)]
 pub struct CreateShareInput {
+    #[serde(default)]
+    pub password: Option<String>,
     /// Optional expiry in hours (default 24, max 720 = 30 days).
     pub ttl_hours: Option<i64>,
 }
@@ -984,6 +986,10 @@ pub async fn create_share(
     let token_hash = sha256_hex(&raw);
     let id = Uuid::now_v7();
 
+    let password_hash = input
+        .password
+        .as_ref()
+        .map(|p| sha256_hex(p));
     let model = file_share::ActiveModel {
         id: Set(id),
         file_id: Set(file_id),
@@ -992,6 +998,7 @@ pub async fn create_share(
         created_at: Set(chrono::Utc::now()),
         revoked_at: Set(None),
         download_count: Set(0),
+        password_hash: Set(password_hash),
     }
     .insert(&state.db)
     .await?;
@@ -1013,15 +1020,22 @@ pub async fn create_share(
     ))
 }
 
+#[derive(Deserialize, ToSchema, utoipa::IntoParams)]
+pub struct ShareDownloadQuery {
+    pub inline: Option<bool>,
+    pub password: Option<String>,
+}
+
 #[utoipa::path(
     get,
     path = "/shares/{token}",
-    responses((status = 200), (status = 404), (status = 410))
+    params(ShareDownloadQuery),
+    responses((status = 200), (status = 404), (status = 410), (status = 401))
 )]
 pub async fn download_share(
     State(state): State<AppState>,
     Path(token): Path<String>,
-    axum::extract::Query(dq): axum::extract::Query<DownloadQuery>,
+    axum::extract::Query(dq): axum::extract::Query<ShareDownloadQuery>,
 ) -> Result<impl IntoResponse> {
     let token_hash = sha256_hex(&token);
     let share = file_share::Entity::find()
@@ -1036,6 +1050,12 @@ pub async fn download_share(
         && exp < chrono::Utc::now()
     {
         return Err(AppError::BadRequest("share expired".into()));
+    }
+    if let Some(expected) = share.password_hash.as_deref() {
+        let provided = dq.password.as_deref().map(|p| sha256_hex(p)).unwrap_or_default();
+        if provided != expected {
+            return Err(AppError::Unauthorized);
+        }
     }
     let row = file_object::Entity::find_by_id(share.file_id)
         .one(&state.db)
