@@ -38,16 +38,16 @@ async fn main() -> anyhow::Result<()> {
     let db = Database::connect(opts).await?;
     Migrator::up(&db, None).await?;
 
-    let storage: Arc<dyn object_store::ObjectStore> = Arc::new(
-        AmazonS3Builder::new()
-            .with_endpoint(&cfg.s3_endpoint)
-            .with_access_key_id(&cfg.s3_access_key)
-            .with_secret_access_key(&cfg.s3_secret_key)
-            .with_bucket_name(&cfg.s3_bucket)
-            .with_region("us-east-1")
-            .with_allow_http(true)
-            .build()?,
-    );
+    let s3_typed = AmazonS3Builder::new()
+        .with_endpoint(&cfg.s3_endpoint)
+        .with_access_key_id(&cfg.s3_access_key)
+        .with_secret_access_key(&cfg.s3_secret_key)
+        .with_bucket_name(&cfg.s3_bucket)
+        .with_region("us-east-1")
+        .with_allow_http(true)
+        .build()?;
+    let signer: Arc<object_store::aws::AmazonS3> = Arc::new(s3_typed);
+    let storage: Arc<dyn object_store::ObjectStore> = signer.clone();
 
     let bus = events::new_bus(1024);
     let mailer = mailer::Mailer::from_env()?;
@@ -55,6 +55,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         db: db.clone(),
         storage,
+        signer,
         bucket: cfg.s3_bucket.clone(),
         cookie_key: Key::from(&cfg.session_secret),
         bus,

@@ -456,6 +456,43 @@ pub async fn purge(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Serialize, ToSchema)]
+pub struct PresignedDto {
+    pub url: String,
+    pub expires_in_seconds: u64,
+}
+
+#[utoipa::path(get, path = "/files/{id}/presign",
+    responses((status = 200, body = PresignedDto), (status = 404)))]
+pub async fn presign(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+) -> Result<Json<PresignedDto>> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let row = file_object::Entity::find_by_id(id)
+        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+    if row.owner_id != uid || row.deleted_at.is_some() {
+        return Err(AppError::NotFound);
+    }
+    use object_store::signer::Signer;
+    let expires = std::time::Duration::from_secs(300);
+    let url = state
+        .signer
+        .signed_url(
+            reqwest::Method::GET,
+            &ObjPath::from(row.storage_key.clone()),
+            expires,
+        )
+        .await
+        .map_err(|e| AppError::Other(anyhow::anyhow!("presign: {e}")))?;
+    Ok(Json(PresignedDto {
+        url: url.to_string(),
+        expires_in_seconds: expires.as_secs(),
+    }))
+}
+
 #[utoipa::path(head, path = "/files/{id}", responses((status = 200), (status = 404)))]
 pub async fn head_file(
     State(state): State<AppState>,

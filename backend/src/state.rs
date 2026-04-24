@@ -10,6 +10,7 @@ use crate::{events::EventBus, mailer::Mailer};
 pub struct AppState {
     pub db: DatabaseConnection,
     pub storage: Arc<dyn ObjectStore>,
+    pub signer: Arc<object_store::aws::AmazonS3>,
     pub bucket: String,
     pub cookie_key: Key,
     pub bus: EventBus,

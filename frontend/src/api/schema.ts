@@ -324,6 +324,22 @@ export interface paths {
         patch: operations["rename"];
         trace?: never;
     };
+    "/files/{id}/presign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["presign"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/files/{id}/shares": {
         parameters: {
             query?: never;
@@ -791,6 +807,11 @@ export interface components {
         };
         MfaCodeInput: {
             code: string;
+        };
+        PresignedDto: {
+            /** Format: int64 */
+            expires_in_seconds: number;
+            url: string;
         };
         QuotaDto: {
             /** Format: int64 */
@@ -1513,6 +1534,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    presign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresignedDto"];
                 };
             };
             404: {
