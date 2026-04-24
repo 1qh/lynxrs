@@ -225,3 +225,23 @@ pub async fn set_role(
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(
+    delete,
+    path = "/admin/users/{id}",
+    responses((status = 204), (status = 401), (status = 404))
+)]
+pub async fn delete_user(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
+) -> Result<axum::http::StatusCode> {
+    require_admin(&state, &headers, &jar).await?;
+    let res = user::Entity::delete_by_id(id).exec(&state.db).await?;
+    if res.rows_affected == 0 {
+        return Err(AppError::NotFound);
+    }
+    crate::audit::record(&state.db, None, "admin_user_deleted", Some(&headers), serde_json::json!({"user_id": id})).await;
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
