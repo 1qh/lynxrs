@@ -87,15 +87,22 @@ impl From<user::Model> for UserSummary {
     }
 }
 
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct UserSearchQuery {
+    pub q: Option<String>,
+}
+
 #[utoipa::path(
     get,
     path = "/admin/users",
+    params(UserSearchQuery),
     responses((status = 200, body = [UserSummary]), (status = 401))
 )]
 pub async fn list_users(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
+    axum::extract::Query(q): axum::extract::Query<UserSearchQuery>,
 ) -> Result<Json<Vec<UserSummary>>> {
     require_admin(&state, &headers, &jar).await?;
 
@@ -105,9 +112,19 @@ pub async fn list_users(
                 .eq("user")
                 .or(user::Column::Role.eq("admin")),
         )
+        .limit(500)
         .all(&state.db)
         .await?;
-    Ok(Json(rows.into_iter().map(UserSummary::from).collect()))
+    let filtered: Vec<UserSummary> = if let Some(s) = q.q.as_ref().filter(|s| !s.is_empty()) {
+        let n = s.to_lowercase();
+        rows.into_iter()
+            .filter(|r| r.email.to_lowercase().contains(&n))
+            .map(UserSummary::from)
+            .collect()
+    } else {
+        rows.into_iter().map(UserSummary::from).collect()
+    };
+    Ok(Json(filtered))
 }
 
 #[utoipa::path(
