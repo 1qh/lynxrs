@@ -424,7 +424,8 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
             .layer(SetRequestIdLayer::new(X_REQUEST_ID, MakeRequestUuid))
             .layer(axum::middleware::from_fn(security_headers))
             .layer(CompressionLayer::new())
-            .layer(RequestBodyLimitLayer::new(64 * 1024 * 1024))
+            .layer(RequestBodyLimitLayer::new(5 * 1024 * 1024 * 1024))
+            .layer(axum::extract::DefaultBodyLimit::disable())
             .layer(TimeoutLayer::with_status_code(
                 axum::http::StatusCode::REQUEST_TIMEOUT,
                 std::time::Duration::from_secs(30),
