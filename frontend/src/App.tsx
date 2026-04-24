@@ -107,6 +107,9 @@ function Home() {
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [mfaSecret, setMfaSecret] = useState<string | null>(null)
   const [audit, setAudit] = useState<Array<{ action: string; ip?: string | null; created_at: string }>>([])
+  const [webhooks, setWebhooks] = useState<Array<{ id: string; url: string; enabled: boolean }>>([])
+  const [webhookUrl, setWebhookUrl] = useState('')
+  const [webhookSecret, setWebhookSecret] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     const { data } = await api.GET('/files', { params: { query: {} } })
@@ -176,6 +179,29 @@ function Home() {
     setShareUrl((data as { url: string }).url)
   }, [])
 
+  const refreshWebhooks = useCallback(async () => {
+    const { data } = await api.GET('/webhooks', {})
+    if (data) setWebhooks(data as Array<{ id: string; url: string; enabled: boolean }>)
+  }, [])
+
+  const createWebhook = useCallback(async () => {
+    if (!webhookUrl) return
+    const { data } = await api.POST('/webhooks', {
+      body: { url: webhookUrl },
+    })
+    if (data) {
+      const d = data as { secret: string }
+      setWebhookSecret(d.secret)
+      setWebhookUrl('')
+      void refreshWebhooks()
+    }
+  }, [webhookUrl, refreshWebhooks])
+
+  const revokeWebhook = useCallback(async (id: string) => {
+    await api.DELETE('/webhooks/{id}', { params: { path: { id } } })
+    void refreshWebhooks()
+  }, [refreshWebhooks])
+
   const loadAudit = useCallback(async () => {
     const { data } = await api.GET('/me/audit', {})
     if (data) setAudit(data as Array<{ action: string; ip?: string | null; created_at: string }>)
@@ -231,6 +257,27 @@ function Home() {
       </view>
       {shareUrl ? (
         <text className="Muted">share: {shareUrl}</text>
+      ) : null}
+      <view className="Button ButtonGhost" bindtap={refreshWebhooks}>
+        <text className="ButtonText">Load webhooks</text>
+      </view>
+      {webhooks.length > 0 ? (
+        <view className="WebhookList">
+          {webhooks.map((w) => (
+            <view key={w.id} className="WebhookRow">
+              <text className="WebhookUrl">{w.url}</text>
+              <view className="Button ButtonGhost" bindtap={() => void revokeWebhook(w.id)}>
+                <text className="ButtonText">revoke</text>
+              </view>
+            </view>
+          ))}
+        </view>
+      ) : null}
+      <view className="Button" bindtap={createWebhook}>
+        <text className="ButtonText">Register webhook: {webhookUrl || '(set via devtools)'}</text>
+      </view>
+      {webhookSecret ? (
+        <text className="Muted">webhook secret (copy now, shown once): {webhookSecret}</text>
       ) : null}
       <view className="Button ButtonGhost" bindtap={loadAudit}>
         <text className="ButtonText">Load audit log</text>
