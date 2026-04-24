@@ -73,6 +73,77 @@
       ],
       "title": "Login success / failure rate",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 14 },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(simu_upload_bytes_bucket[5m])))",
+          "legendFormat": "upload p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(simu_upload_bytes_bucket[5m])))",
+          "legendFormat": "upload p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(simu_upload_bytes_bucket[5m])))",
+          "legendFormat": "upload p99",
+          "refId": "C"
+        }
+      ],
+      "title": "Upload size distribution",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 14 },
+      "id": 6,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(simu_download_bytes_bucket[5m])))",
+          "legendFormat": "download p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(simu_download_bytes_bucket[5m])))",
+          "legendFormat": "download p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(simu_download_bytes_bucket[5m])))",
+          "legendFormat": "download p99",
+          "refId": "C"
+        }
+      ],
+      "title": "Download size distribution",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 20 },
+      "id": 7,
+      "targets": [
+        { "expr": "simu_ws_connections", "legendFormat": "ws connections", "refId": "A" }
+      ],
+      "title": "Active WebSocket connections",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 20 },
+      "id": 8,
+      "targets": [
+        { "expr": "sum(rate(simu_webhooks_delivered_total[5m]))", "legendFormat": "delivered", "refId": "A" },
+        { "expr": "sum(rate(simu_webhooks_failed_total[5m]))", "legendFormat": "failed", "refId": "B" }
+      ],
+      "title": "Webhook deliveries",
+      "type": "timeseries"
     }
   ],
   "refresh": "15s",
