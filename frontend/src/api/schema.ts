@@ -340,6 +340,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/files/{file_id}/comments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_comment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/files/{id}": {
         parameters: {
             query?: never;
@@ -354,6 +370,22 @@ export interface paths {
         options?: never;
         head: operations["head_file"];
         patch: operations["rename"];
+        trace?: never;
+    };
+    "/files/{id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_comments"];
+        put?: never;
+        post: operations["add_comment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/files/{id}/confirm-upload": {
@@ -540,6 +572,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["list_mine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["me_export"];
         put?: never;
         post?: never;
         delete?: never;
@@ -962,6 +1010,20 @@ export interface components {
         ChangePasswordInput: {
             current_password: string;
             new_password: string;
+        };
+        CommentDto: {
+            body: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            file_id: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            user_id: string;
+        };
+        CommentInput: {
+            body: string;
         };
         CreateOrgInput: {
             name: string;
@@ -1846,6 +1908,32 @@ export interface operations {
             };
         };
     };
+    delete_comment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     download: {
         parameters: {
             query?: {
@@ -1951,6 +2039,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_comments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentDto"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    add_comment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommentInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentDto"];
                 };
             };
             404: {
@@ -2349,6 +2495,23 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuditDto"][];
                 };
+            };
+        };
+    };
+    me_export: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

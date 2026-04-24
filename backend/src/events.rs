@@ -88,6 +88,30 @@ async fn handle_socket(socket: WebSocket, bus: EventBus) {
     metrics::gauge!("simu_ws_connections").decrement(1.0);
 }
 
+pub async fn sse_handler(
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse> {
+    let _uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let mut sub = state.bus.subscribe();
+    let stream = async_stream::stream! {
+        // Initial ping
+        yield Ok::<_, std::convert::Infallible>(axum::response::sse::Event::default()
+            .event("ping")
+            .data(chrono::Utc::now().timestamp_millis().to_string()));
+        while let Ok(ev) = sub.recv().await {
+            if let Ok(body) = serde_json::to_string(&ev) {
+                yield Ok(axum::response::sse::Event::default().data(body));
+            }
+        }
+    };
+    Ok(axum::response::Sse::new(stream)
+        .keep_alive(axum::response::sse::KeepAlive::default()))
+}
+
 pub fn router() -> Router<AppState> {
-    Router::new().route("/events/ws", get(ws_handler))
+    Router::new()
+        .route("/events/ws", get(ws_handler))
+        .route("/events/sse", get(sse_handler))
 }
