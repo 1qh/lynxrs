@@ -211,6 +211,7 @@ pub async fn upload(
         size_bytes: Set(data.len() as i64),
         created_at: Set(chrono::Utc::now()),
         sha256: Set(Some(sha)),
+        deleted_at: Set(None),
     }
     .insert(&state.db)
     .await?;
@@ -258,6 +259,7 @@ pub async fn list(
 
     let mut query = file_object::Entity::find()
         .filter(file_object::Column::OwnerId.eq(uid))
+        .filter(file_object::Column::DeletedAt.is_null())
         .order_by_desc(file_object::Column::CreatedAt)
         .limit(limit + 1);
     if let Some(cursor) = q.cursor {
@@ -303,13 +305,73 @@ pub async fn delete(
     if row.owner_id != uid {
         return Err(AppError::NotFound);
     }
-    let obj_path = ObjPath::from(row.storage_key.clone());
-    // best-effort storage delete; DB is source of truth
-    let _ = state.storage.delete(&obj_path).await;
-    file_object::Entity::delete_by_id(id)
-        .exec(&state.db)
-        .await?;
+    let mut am: file_object::ActiveModel = row.into();
+    am.deleted_at = Set(Some(chrono::Utc::now()));
+    am.update(&state.db).await?;
     let _ = state.bus.send(EventMsg::FileDeleted { file_id: id, owner_id: uid });
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(get, path = "/trash", responses((status = 200, body = FileList)))]
+pub async fn list_trash(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+) -> Result<Json<FileList>> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let rows = file_object::Entity::find()
+        .filter(file_object::Column::OwnerId.eq(uid))
+        .filter(file_object::Column::DeletedAt.is_not_null())
+        .order_by_desc(file_object::Column::DeletedAt)
+        .limit(200)
+        .all(&state.db)
+        .await?;
+    Ok(Json(FileList {
+        items: rows.into_iter().map(FileDto::from).collect(),
+        next_cursor: None,
+    }))
+}
+
+#[utoipa::path(post, path = "/trash/{id}/restore", responses((status = 204), (status = 404)))]
+pub async fn restore(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let row = file_object::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if row.owner_id != uid || row.deleted_at.is_none() {
+        return Err(AppError::NotFound);
+    }
+    let mut am: file_object::ActiveModel = row.into();
+    am.deleted_at = Set(None);
+    am.update(&state.db).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(delete, path = "/trash/{id}",
+    responses((status = 204), (status = 404)))]
+pub async fn purge(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let row = file_object::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if row.owner_id != uid || row.deleted_at.is_none() {
+        return Err(AppError::NotFound);
+    }
+    let obj_path = ObjPath::from(row.storage_key.clone());
+    let _ = state.storage.delete(&obj_path).await;
+    file_object::Entity::delete_by_id(id).exec(&state.db).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -641,6 +703,7 @@ pub async fn upload_json(
         size_bytes: Set(data.len() as i64),
         created_at: Set(chrono::Utc::now()),
         sha256: Set(Some(sha)),
+        deleted_at: Set(None),
     }
     .insert(&state.db)
     .await?;

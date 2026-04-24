@@ -13,6 +13,7 @@ pub struct Model {
     pub size_bytes: i64,
     pub created_at: ChronoDateTimeUtc,
     pub sha256: Option<String>,
+    pub deleted_at: Option<ChronoDateTimeUtc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
