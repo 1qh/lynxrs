@@ -37,6 +37,8 @@ pub struct LoginInput {
     pub email: String,
     #[validate(length(min = 1, max = 128))]
     pub password: String,
+    #[serde(default)]
+    pub totp_code: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -45,6 +47,7 @@ pub struct UserDto {
     pub email: String,
     pub role: String,
     pub email_verified: bool,
+    pub totp_enabled: bool,
 }
 
 impl From<user::Model> for UserDto {
@@ -54,6 +57,7 @@ impl From<user::Model> for UserDto {
             email: m.email,
             role: m.role,
             email_verified: m.email_verified_at.is_some(),
+            totp_enabled: m.totp_enabled,
         }
     }
 }
@@ -133,6 +137,8 @@ pub async fn signup(
         session_version: Set(0),
         created_at: Set(now),
         updated_at: Set(now),
+        totp_secret: Set(None),
+        totp_enabled: Set(false),
     }
     .insert(&state.db)
     .await?;
@@ -279,6 +285,14 @@ pub async fn login(
         return Err(AppError::Unauthorized);
     }
 
+    if u.totp_enabled {
+        let code = input.totp_code.as_deref().unwrap_or("");
+        if code.is_empty() || !crate::mfa::verify_for(&u, code)? {
+            crate::audit::record(&state.db, Some(u.id), "login_failed_mfa", Some(&headers), serde_json::json!({})).await;
+            return Err(AppError::Unauthorized);
+        }
+    }
+
     crate::audit::record(&state.db, Some(u.id), "login", Some(&headers), serde_json::json!({})).await;
     let jar = jar.add(issue_cookie(u.id, u.session_version));
     Ok((jar, Json(UserDto::from(u))))
@@ -312,6 +326,7 @@ pub async fn delete_me(
 ) -> Result<impl IntoResponse> {
     let uid = authenticate(&state, &headers, &jar).await?;
     // CASCADE FKs drop file_objects, password_resets, email_verifications.
+    crate::audit::record(&state.db, Some(uid), "delete_account", Some(&headers), serde_json::json!({})).await;
     user::Entity::delete_by_id(uid).exec(&state.db).await?;
     let jar = jar.remove(Cookie::build(SESSION_COOKIE).path("/").build());
     Ok((StatusCode::NO_CONTENT, jar))
@@ -359,6 +374,7 @@ pub async fn change_password(
     active.updated_at = Set(chrono::Utc::now());
     active.update(&state.db).await?;
 
+    crate::audit::record(&state.db, Some(uid), "password_change", Some(&headers), serde_json::json!({})).await;
     // Refresh cookie with bumped version — old cookies instantly invalid.
     let jar = jar.add(issue_cookie(uid, new_version));
     Ok((StatusCode::NO_CONTENT, jar))
@@ -379,6 +395,7 @@ pub async fn logout_all(
     am.session_version = Set(am.session_version.unwrap() + 1);
     am.updated_at = Set(chrono::Utc::now());
     am.update(&state.db).await?;
+    crate::audit::record(&state.db, Some(uid), "logout_all", Some(&headers), serde_json::json!({})).await;
     let jar = jar.remove(Cookie::build(SESSION_COOKIE).path("/").build());
     Ok((StatusCode::NO_CONTENT, jar))
 }

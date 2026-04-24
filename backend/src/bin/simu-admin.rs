@@ -87,6 +87,8 @@ async fn main() -> anyhow::Result<()> {
                 session_version: Set(0),
                 created_at: Set(now),
                 updated_at: Set(now),
+                totp_secret: Set(None),
+                totp_enabled: Set(false),
             }
             .insert(&db)
             .await?;

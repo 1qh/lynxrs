@@ -11,6 +11,7 @@ pub mod events;
 pub mod files;
 pub mod housekeeping;
 pub mod mailer;
+pub mod mfa;
 pub mod migration;
 pub mod state;
 pub mod telemetry;

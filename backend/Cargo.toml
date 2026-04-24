@@ -83,6 +83,7 @@ bytes = "=1.11.1"
 base64 = "=0.22.1"
 async-trait = "=0.1.89"
 futures = "=0.3.31"
+totp-rs = { version = "=5.7.1", features = ["gen_secret", "otpauth"] }
 
 [dev-dependencies]
 tokio = { version = "=1.51.1", features = ["macros", "rt-multi-thread", "test-util"] }

@@ -17,6 +17,10 @@ pub struct Model {
     pub session_version: i32,
     pub created_at: ChronoDateTimeUtc,
     pub updated_at: ChronoDateTimeUtc,
+    #[serde(skip_serializing)]
+    pub totp_secret: Option<String>,
+    #[sea_orm(default_value = false)]
+    pub totp_enabled: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

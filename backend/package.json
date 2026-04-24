@@ -1,0 +1,6 @@
+{
+  "dependencies": {},
+  "devDependencies": {
+    "otpauth": "^9.5.0"
+  }
+}
