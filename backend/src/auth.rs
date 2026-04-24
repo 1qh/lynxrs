@@ -62,6 +62,14 @@ impl From<user::Model> for UserDto {
     }
 }
 
+pub async fn hash_password_sync(password: String) -> Result<String> {
+    hash_password(password).await
+}
+
+pub fn issue_cookie_public(uid: Uuid, v: i32) -> Cookie<'static> {
+    issue_cookie(uid, v)
+}
+
 async fn hash_password(password: String) -> Result<String> {
     tokio::task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut OsRng);

@@ -12,6 +12,7 @@ pub mod files;
 pub mod housekeeping;
 pub mod mailer;
 pub mod mfa;
+pub mod oauth;
 pub mod migration;
 pub mod state;
 pub mod telemetry;

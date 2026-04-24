@@ -47,7 +47,7 @@ use tracing::Level;
 use utoipa::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::{admin, audit, auth, error::ErrorBody, events, files, mfa, state::AppState, tokens, webhooks};
+use crate::{admin, audit, auth, error::ErrorBody, events, files, mfa, oauth, state::AppState, tokens, webhooks};
 
 const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
 
@@ -265,6 +265,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         let ready_state = state.clone();
         let limited = Router::new()
             .nest("/api", api_router)
+            .nest("/api", oauth::router().with_state(state.clone()))
             .merge(events::router().with_state(state))
             .layer(GovernorLayer::new(governor_conf).error_handler(|err| {
                 use axum::response::IntoResponse;
@@ -326,6 +327,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         Router::new()
             .route("/health", get(health))
             .nest("/api", api_router)
+            .nest("/api", oauth::router().with_state(state.clone()))
             .merge(events::router().with_state(state))
             .route(
                 "/api-docs/openapi.json",
