@@ -73,6 +73,8 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         files::BulkAction,
         files::BulkResult,
         files::PresignedDto,
+        files::PresignUploadInput,
+        files::PresignUploadDto,
         files::VersionDto,
         files::CreateShareInput,
         files::Base64UploadInput,
@@ -196,6 +198,8 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(files::me_stats))
         .routes(routes!(files::verify))
         .routes(routes!(files::presign))
+        .routes(routes!(files::presign_upload))
+        .routes(routes!(files::confirm_upload))
         .routes(routes!(files::list_versions, files::create_version))
         .routes(routes!(files::restore_version))
         .routes(routes!(files::thumbnail))

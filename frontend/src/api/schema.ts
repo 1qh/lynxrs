@@ -308,6 +308,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/files/presign-upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["presign_upload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/files/shares/{id}": {
         parameters: {
             query?: never;
@@ -338,6 +354,22 @@ export interface paths {
         options?: never;
         head: operations["head_file"];
         patch: operations["rename"];
+        trace?: never;
+    };
+    "/files/{id}/confirm-upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["confirm_upload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/files/{id}/presign": {
@@ -925,6 +957,19 @@ export interface components {
         };
         MfaCodeInput: {
             code: string;
+        };
+        PresignUploadDto: {
+            /** Format: int64 */
+            expires_in_seconds: number;
+            /** Format: uuid */
+            file_id: string;
+            put_url: string;
+        };
+        PresignUploadInput: {
+            content_type: string;
+            filename: string;
+            /** Format: int64 */
+            size_bytes: number;
         };
         PresignedDto: {
             /** Format: int64 */
@@ -1558,6 +1603,29 @@ export interface operations {
             };
         };
     };
+    presign_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresignUploadInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresignUploadDto"];
+                };
+            };
+        };
+    };
     revoke_share: {
         parameters: {
             query?: never;
@@ -1681,6 +1749,33 @@ export interface operations {
                 "application/json": components["schemas"]["RenameInput"];
             };
         };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    confirm_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             200: {
                 headers: {
