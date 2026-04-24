@@ -12,7 +12,7 @@ test('per-user rate limit returns 429 rate_limited', async () => {
   const envText = execSync('cat /Users/o/simu/backend/.env').toString()
   const baseEnv: Record<string, string> = { ...(process.env as Record<string, string>) }
   for (const line of envText.split('\n')) {
-    const m = line.match(/^([A-Z_]+)=(.*)$/)
+    const m = line.match(/^([A-Z][A-Z0-9_]*)=(.*)$/)
     if (m) baseEnv[m[1]!] = m[2]!
   }
   const env = {
@@ -41,10 +41,9 @@ test('per-user rate limit returns 429 rate_limited', async () => {
     await new Promise((r) => setTimeout(r, 200))
   }
   if (!ready) {
-    console.log('spawned backend stderr:', stderr.slice(-800))
+    console.log('spawned backend stderr:', stderr.slice(-1200))
     proc.kill('SIGTERM')
-    test.skip(true, 'spawned backend did not become ready')
-    return
+    throw new Error('spawned rate-limit backend on 127.0.0.1:' + port + ' did not become ready in 15s')
   }
 
   try {
