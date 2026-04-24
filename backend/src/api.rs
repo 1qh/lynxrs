@@ -157,8 +157,13 @@ async fn api_docs_html() -> axum::response::Response {
         .into_response()
 }
 
-async fn health() -> Json<serde_json::Value> {
-    Json(serde_json::json!({ "status": "ok" }))
+async fn health() -> axum::response::Response {
+    use axum::response::IntoResponse;
+    (
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(serde_json::json!({ "status": "ok" })),
+    )
+        .into_response()
 }
 
 async fn version() -> Json<serde_json::Value> {
