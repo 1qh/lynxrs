@@ -89,6 +89,8 @@ async fn main() -> anyhow::Result<()> {
                 updated_at: Set(now),
                 totp_secret: Set(None),
                 totp_enabled: Set(false),
+                failed_login_count: Set(0),
+                locked_until: Set(None),
             }
             .insert(&db)
             .await?;

@@ -14,6 +14,7 @@ mod m20260424_000011_audit_log;
 mod m20260424_000012_mfa;
 mod m20260424_000013_webhooks;
 mod m20260424_000014_file_checksum;
+mod m20260424_000015_login_lockout;
 
 pub struct Migrator;
 
@@ -35,6 +36,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260424_000012_mfa::Migration),
             Box::new(m20260424_000013_webhooks::Migration),
             Box::new(m20260424_000014_file_checksum::Migration),
+            Box::new(m20260424_000015_login_lockout::Migration),
         ]
     }
 }

@@ -21,6 +21,9 @@ pub struct Model {
     pub totp_secret: Option<String>,
     #[sea_orm(default_value = false)]
     pub totp_enabled: bool,
+    #[sea_orm(default_value = 0)]
+    pub failed_login_count: i32,
+    pub locked_until: Option<ChronoDateTimeUtc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

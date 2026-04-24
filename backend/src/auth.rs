@@ -139,6 +139,8 @@ pub async fn signup(
         updated_at: Set(now),
         totp_secret: Set(None),
         totp_enabled: Set(false),
+        failed_login_count: Set(0),
+        locked_until: Set(None),
     }
     .insert(&state.db)
     .await?;
@@ -280,17 +282,53 @@ pub async fn login(
         }
     };
 
-    if !verify_password(input.password, u.password_hash.clone()).await? {
-        crate::audit::record(&state.db, Some(u.id), "login_failed", Some(&headers), serde_json::json!({})).await;
+    if let Some(until) = u.locked_until
+        && until > chrono::Utc::now()
+    {
+        crate::audit::record(&state.db, Some(u.id), "login_locked", Some(&headers), serde_json::json!({"until": until})).await;
         return Err(AppError::Unauthorized);
     }
 
-    if u.totp_enabled {
+    let password_ok = verify_password(input.password, u.password_hash.clone()).await?;
+    let mfa_ok = if !password_ok {
+        false
+    } else if u.totp_enabled {
         let code = input.totp_code.as_deref().unwrap_or("");
-        if code.is_empty() || !crate::mfa::verify_for(&u, code)? {
-            crate::audit::record(&state.db, Some(u.id), "login_failed_mfa", Some(&headers), serde_json::json!({})).await;
-            return Err(AppError::Unauthorized);
-        }
+        !code.is_empty() && crate::mfa::verify_for(&u, code)?
+    } else {
+        true
+    };
+
+    if !password_ok || !mfa_ok {
+        let new_count = u.failed_login_count + 1;
+        let lock = if new_count >= 5 {
+            Some(chrono::Utc::now() + chrono::Duration::minutes(15))
+        } else {
+            u.locked_until
+        };
+        let uid_for_audit = u.id;
+        let mut am: user::ActiveModel = u.into();
+        am.failed_login_count = Set(new_count);
+        am.locked_until = Set(lock);
+        am.updated_at = Set(chrono::Utc::now());
+        let _ = am.update(&state.db).await;
+        let action = if !password_ok { "login_failed" } else { "login_failed_mfa" };
+        crate::audit::record(&state.db, Some(uid_for_audit), action, Some(&headers), serde_json::json!({"count": new_count})).await;
+        return Err(AppError::Unauthorized);
+    }
+
+    // Success: reset counters.
+    if u.failed_login_count != 0 || u.locked_until.is_some() {
+        let uid_copy = u.id;
+        let sv = u.session_version;
+        let mut am: user::ActiveModel = u.clone().into();
+        am.failed_login_count = Set(0);
+        am.locked_until = Set(None);
+        am.updated_at = Set(chrono::Utc::now());
+        let _ = am.update(&state.db).await;
+        crate::audit::record(&state.db, Some(uid_copy), "login", Some(&headers), serde_json::json!({})).await;
+        let jar = jar.add(issue_cookie(uid_copy, sv));
+        return Ok((jar, Json(UserDto::from(u))));
     }
 
     crate::audit::record(&state.db, Some(u.id), "login", Some(&headers), serde_json::json!({})).await;
