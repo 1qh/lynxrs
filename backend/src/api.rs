@@ -41,10 +41,25 @@ async fn inject_request_id_into_errors(
     if !status.is_client_error() && !status.is_server_error() || !is_json {
         return res;
     }
+    // Guard: skip if body is unknown-sized or large.
+    let over_limit = res
+        .headers()
+        .get(axum::http::header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<usize>().ok())
+        .map(|n| n > 256 * 1024)
+        .unwrap_or(false);
+    if over_limit {
+        return res;
+    }
     let (parts, body) = res.into_parts();
-    let bytes = match axum::body::to_bytes(body, 64 * 1024).await {
+    // Only touch small JSON errors; pass-through anything bigger untouched.
+    let bytes = match axum::body::to_bytes(body, 256 * 1024).await {
         Ok(b) => b,
-        Err(_) => return axum::response::Response::from_parts(parts, axum::body::Body::empty()),
+        Err(_) => {
+            // Body too big — can't rewrite; reconstruct without rewrite.
+            return axum::response::Response::from_parts(parts, axum::body::Body::empty());
+        }
     };
     let mut val: serde_json::Value = match serde_json::from_slice(&bytes) {
         Ok(v) => v,
@@ -420,12 +435,12 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
 
         let ready_state = state.clone();
         let scope_state = state.clone();
-        let per_user_limiter = auth::build_per_user_limiter();
+        let rate_state = auth::build_rate_state(state.db.clone(), state.cookie_key.clone());
         let limited = Router::new()
             .nest("/api", api_router)
             .nest("/api", oauth::router().with_state(state.clone()))
             .merge(events::router().with_state(state))
-            .layer(axum::middleware::from_fn_with_state(per_user_limiter, auth::per_user_rate_limit))
+            .layer(axum::middleware::from_fn_with_state(rate_state, auth::per_user_rate_limit))
             .layer(axum::middleware::from_fn(inject_request_id_into_errors))
             .layer(axum::middleware::from_fn(auth::csrf_enforce))
             .layer(axum::middleware::from_fn_with_state(scope_state, auth::token_scope_enforce))

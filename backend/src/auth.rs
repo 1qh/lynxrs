@@ -701,48 +701,103 @@ type PerUserLimiter = governor::RateLimiter<
     governor::middleware::NoOpMiddleware,
 >;
 
-pub fn build_per_user_limiter() -> std::sync::Arc<PerUserLimiter> {
+/// Limiter + uid cache keyed on the opaque session or bearer token.
+/// First request resolves uid via DB; subsequent requests hit the cache.
+#[derive(Clone)]
+pub struct RateState {
+    pub limiter: std::sync::Arc<PerUserLimiter>,
+    pub uid_cache: std::sync::Arc<dashmap::DashMap<String, Uuid>>,
+    pub db: sea_orm::DatabaseConnection,
+    pub cookie_key: axum_extra::extract::cookie::Key,
+}
+
+pub fn build_rate_state(db: sea_orm::DatabaseConnection, cookie_key: axum_extra::extract::cookie::Key) -> RateState {
     let per_sec = std::num::NonZeroU32::new(
         std::env::var("PER_USER_RPS").ok().and_then(|v| v.parse().ok()).unwrap_or(50),
     ).unwrap();
     let quota = governor::Quota::per_second(per_sec);
-    std::sync::Arc::new(governor::RateLimiter::dashmap(quota))
+    RateState {
+        limiter: std::sync::Arc::new(governor::RateLimiter::dashmap(quota)),
+        uid_cache: std::sync::Arc::new(dashmap::DashMap::new()),
+        db,
+        cookie_key,
+    }
 }
 
 pub async fn per_user_rate_limit(
-    axum::extract::State(limiter): axum::extract::State<std::sync::Arc<PerUserLimiter>>,
+    axum::extract::State(rs): axum::extract::State<RateState>,
     req: axum::http::Request<axum::body::Body>,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
-    // Only enforce on mutating requests.
     if matches!(req.method().as_str(), "GET" | "HEAD" | "OPTIONS") {
         return next.run(req).await;
     }
-    // Derive uid: try cookie (uid:version) or bearer hash→lookup is expensive.
-    // Cheap path: uid from simu_session cookie without decryption (ciphertext as key; stable per user session).
-    let uid_key = req
+
+    // Identify session by raw cookie value or bearer token.
+    let raw_session = req
         .headers()
         .get(axum::http::header::COOKIE)
         .and_then(|v| v.to_str().ok())
         .and_then(|s| {
             s.split(';').find_map(|kv| {
                 let t = kv.trim();
-                t.strip_prefix("simu_session=")
-                    .map(|v| Uuid::new_v5(&Uuid::NAMESPACE_OID, v.as_bytes()))
+                t.strip_prefix("simu_session=").map(|v| v.to_string())
             })
-        })
-        .or_else(|| {
-            req.headers()
-                .get(axum::http::header::AUTHORIZATION)
-                .and_then(|v| v.to_str().ok())
-                .and_then(|s| s.strip_prefix("Bearer "))
-                .map(|t| Uuid::new_v5(&Uuid::NAMESPACE_OID, t.as_bytes()))
         });
-    let Some(key) = uid_key else {
+    let raw_bearer = req
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .map(|t| t.to_string());
+    let cache_key = raw_session.clone().or(raw_bearer.clone());
+    let Some(cache_key) = cache_key else {
         return next.run(req).await;
     };
-    if limiter.check_key(&key).is_err() {
+
+    // Resolve uid: cache → DB. Session cookie path decrypts via PrivateCookieJar
+    // (one-shot per session); bearer path looks up the api_token row.
+    let uid = if let Some(v) = rs.uid_cache.get(&cache_key) {
+        *v.value()
+    } else {
+        let resolved = if let Some(s) = raw_session.as_ref() {
+            use axum::http::HeaderMap;
+            let mut hdrs = HeaderMap::new();
+            if let Ok(val) = format!("simu_session={s}").parse() {
+                hdrs.append(axum::http::header::COOKIE, val);
+            }
+            let jar: axum_extra::extract::PrivateCookieJar =
+                axum_extra::extract::PrivateCookieJar::from_headers(&hdrs, rs.cookie_key.clone());
+            jar.get("simu_session").and_then(|c| {
+                let v = c.value().to_string();
+                v.split_once(':')
+                    .and_then(|(u, _)| Uuid::parse_str(u).ok())
+            })
+        } else if let Some(tok) = raw_bearer.as_ref() {
+            use crate::entity::api_token;
+            let hash = hex::encode(sha2::Sha256::digest(tok.as_bytes()));
+            use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+            api_token::Entity::find()
+                .filter(api_token::Column::TokenHash.eq(hash))
+                .one(&rs.db)
+                .await
+                .ok()
+                .flatten()
+                .filter(|r| r.revoked_at.is_none())
+                .map(|r| r.user_id)
+        } else {
+            None
+        };
+        if let Some(u) = resolved {
+            rs.uid_cache.insert(cache_key.clone(), u);
+            u
+        } else {
+            return next.run(req).await;
+        }
+    };
+
+    if rs.limiter.check_key(&uid).is_err() {
         metrics::counter!("simu_rate_limited_total", "kind" => "per_user").increment(1);
         return (
             axum::http::StatusCode::TOO_MANY_REQUESTS,

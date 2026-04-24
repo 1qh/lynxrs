@@ -178,7 +178,7 @@ pub async fn rename(
         .one(&state.db)
         .await?
         .ok_or(AppError::NotFound)?;
-    if row.owner_id != uid {
+    if !can_access(&state.db, uid, &row).await? {
         return Err(AppError::NotFound);
     }
     let mut am: file_object::ActiveModel = row.into();
@@ -207,7 +207,7 @@ pub async fn verify(
         .one(&state.db)
         .await?
         .ok_or(AppError::NotFound)?;
-    if row.owner_id != uid {
+    if !can_access(&state.db, uid, &row).await? {
         return Err(AppError::NotFound);
     }
     let obj_path = ObjPath::from(row.storage_key.clone());
@@ -524,7 +524,7 @@ pub async fn delete(
         .one(&state.db)
         .await?
         .ok_or(AppError::NotFound)?;
-    if row.owner_id != uid {
+    if !can_access(&state.db, uid, &row).await? {
         return Err(AppError::NotFound);
     }
     let mut am: file_object::ActiveModel = row.into();
@@ -576,7 +576,7 @@ pub async fn thumbnail(
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
         .one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if row.owner_id != uid || row.deleted_at.is_some() {
+    if row.deleted_at.is_some() || !can_access(&state.db, uid, &row).await? {
         return Err(AppError::NotFound);
     }
     let key = thumb_key(id, uid);
@@ -674,7 +674,7 @@ pub async fn create_version(
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
         .one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if row.owner_id != uid || row.deleted_at.is_some() {
+    if row.deleted_at.is_some() || !can_access(&state.db, uid, &row).await? {
         return Err(AppError::NotFound);
     }
     let data = B64.decode(input.data_base64.as_bytes())
@@ -709,7 +709,7 @@ pub async fn restore_version(
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
         .one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if row.owner_id != uid || row.deleted_at.is_some() {
+    if row.deleted_at.is_some() || !can_access(&state.db, uid, &row).await? {
         return Err(AppError::NotFound);
     }
     let v = file_version::Entity::find()
@@ -1063,7 +1063,7 @@ pub async fn presign(
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
         .one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if row.owner_id != uid || row.deleted_at.is_some() {
+    if row.deleted_at.is_some() || !can_access(&state.db, uid, &row).await? {
         return Err(AppError::NotFound);
     }
     use object_store::signer::Signer;
@@ -1375,7 +1375,7 @@ pub async fn list_shares(
         .one(&state.db)
         .await?
         .ok_or(AppError::NotFound)?;
-    if row.owner_id != uid {
+    if !can_access(&state.db, uid, &row).await? {
         return Err(AppError::NotFound);
     }
     let shares = file_share::Entity::find()
