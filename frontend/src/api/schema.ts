@@ -1558,7 +1558,10 @@ export type $defs = Record<string, never>;
 export interface operations {
     audit_all: {
         parameters: {
-            query?: never;
+            query?: {
+                action?: string | null;
+                user_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;

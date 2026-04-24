@@ -127,22 +127,35 @@ pub async fn list_users(
     Ok(Json(filtered))
 }
 
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct AdminAuditQuery {
+    pub action: Option<String>,
+    pub user_id: Option<uuid::Uuid>,
+}
+
 #[utoipa::path(
     get,
     path = "/admin/audit",
+    params(AdminAuditQuery),
     responses((status = 200, body = [AuditDto]), (status = 401))
 )]
 pub async fn audit_all(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
+    axum::extract::Query(q): axum::extract::Query<AdminAuditQuery>,
 ) -> Result<Json<Vec<AuditDto>>> {
     require_admin(&state, &headers, &jar).await?;
-    let rows = audit_event::Entity::find()
+    let mut qb = audit_event::Entity::find()
         .order_by_desc(audit_event::Column::CreatedAt)
-        .limit(500)
-        .all(&state.db)
-        .await?;
+        .limit(500);
+    if let Some(a) = q.action.as_ref().filter(|s| !s.is_empty()) {
+        qb = qb.filter(audit_event::Column::Action.eq(a.as_str()));
+    }
+    if let Some(u) = q.user_id {
+        qb = qb.filter(audit_event::Column::UserId.eq(u));
+    }
+    let rows = qb.all(&state.db).await?;
     Ok(Json(audit_to_dtos(rows)))
 }
 
