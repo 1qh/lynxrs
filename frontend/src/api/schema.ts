@@ -276,6 +276,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["quota"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/shares/{token}": {
         parameters: {
             query?: never;
@@ -423,6 +439,12 @@ export interface components {
         LoginInput: {
             email: string;
             password: string;
+        };
+        QuotaDto: {
+            /** Format: int64 */
+            limit_bytes: number;
+            /** Format: int64 */
+            used_bytes: number;
         };
         ResetPasswordInput: {
             new_password: string;
@@ -989,6 +1011,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    quota: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuotaDto"];
+                };
             };
         };
     };

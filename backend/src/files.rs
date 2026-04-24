@@ -44,6 +44,52 @@ impl From<file_object::Model> for FileDto {
 }
 
 const MAX_FILE_BYTES: usize = 50 * 1024 * 1024; // 50 MB cap for spike
+const USER_QUOTA_BYTES: i64 = 500 * 1024 * 1024; // 500 MB per user
+
+async fn used_bytes(db: &sea_orm::DatabaseConnection, uid: Uuid) -> Result<i64> {
+    let sizes: Vec<i64> = file_object::Entity::find()
+        .filter(file_object::Column::OwnerId.eq(uid))
+        .select_only()
+        .column(file_object::Column::SizeBytes)
+        .into_tuple()
+        .all(db)
+        .await?;
+    Ok(sizes.iter().sum())
+}
+
+async fn enforce_quota(
+    db: &sea_orm::DatabaseConnection,
+    uid: Uuid,
+    incoming: i64,
+) -> Result<()> {
+    let used = used_bytes(db, uid).await?;
+    if used + incoming > USER_QUOTA_BYTES {
+        return Err(AppError::BadRequest(format!(
+            "quota exceeded: {} used + {} incoming > {} limit",
+            used, incoming, USER_QUOTA_BYTES
+        )));
+    }
+    Ok(())
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct QuotaDto {
+    pub used_bytes: i64,
+    pub limit_bytes: i64,
+}
+
+#[utoipa::path(get, path = "/me/quota", responses((status = 200, body = QuotaDto)))]
+pub async fn quota(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+) -> Result<Json<QuotaDto>> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    Ok(Json(QuotaDto {
+        used_bytes: used_bytes(&state.db, uid).await?,
+        limit_bytes: USER_QUOTA_BYTES,
+    }))
+}
 
 #[utoipa::path(post, path = "/files", responses((status = 201, body = FileDto), (status = 413)))]
 pub async fn upload(
@@ -75,6 +121,7 @@ pub async fn upload(
             "file too large: max {MAX_FILE_BYTES} bytes"
         )));
     }
+    enforce_quota(&state.db, uid, data.len() as i64).await?;
 
     let id = Uuid::now_v7();
     let storage_key = format!("u/{uid}/{id}");
@@ -444,6 +491,7 @@ pub async fn upload_json(
             "file too large: max {MAX_FILE_BYTES} bytes"
         )));
     }
+    enforce_quota(&state.db, uid, data.len() as i64).await?;
 
     let id = Uuid::now_v7();
     let storage_key = format!("u/{uid}/{id}");
