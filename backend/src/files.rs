@@ -1422,6 +1422,82 @@ pub async fn upload_json(
     Ok((StatusCode::CREATED, Json(FileDto::from(model))))
 }
 
+#[derive(Deserialize, ToSchema)]
+pub struct ZipDownloadInput {
+    pub ids: Vec<Uuid>,
+}
+
+#[utoipa::path(post, path = "/files/download-zip", request_body = ZipDownloadInput,
+    responses((status = 200)))]
+pub async fn download_zip(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Json(input): Json<ZipDownloadInput>,
+) -> Result<axum::response::Response> {
+    use axum::response::IntoResponse;
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    if input.ids.is_empty() || input.ids.len() > 200 {
+        return Err(AppError::BadRequest("ids required, max 200".into()));
+    }
+    let rows = file_object::Entity::find()
+        .filter(file_object::Column::Id.is_in(input.ids.clone()))
+        .filter(file_object::Column::DeletedAt.is_null())
+        .all(&state.db)
+        .await?;
+    let mut accessible = Vec::with_capacity(rows.len());
+    for r in rows {
+        if can_access(&state.db, uid, &r).await? {
+            accessible.push(r);
+        }
+    }
+    if accessible.is_empty() {
+        return Err(AppError::NotFound);
+    }
+
+    // Fetch all object bytes serially (simple).
+    let mut items: Vec<(String, bytes::Bytes)> = Vec::with_capacity(accessible.len());
+    for r in accessible {
+        let result = state.storage.get(&ObjPath::from(r.storage_key.clone())).await?;
+        let b = result.bytes().await?;
+        items.push((r.filename, b));
+    }
+
+    let zipped = tokio::task::spawn_blocking(move || -> Result<Vec<u8>> {
+        use std::io::{Cursor, Write};
+        use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
+        let mut buf = Cursor::new(Vec::<u8>::new());
+        {
+            let mut w = ZipWriter::new(&mut buf);
+            let opts: SimpleFileOptions = SimpleFileOptions::default()
+                .compression_method(CompressionMethod::Deflated)
+                .unix_permissions(0o644);
+            let mut seen = std::collections::HashMap::<String, u32>::new();
+            for (name, bytes) in items {
+                let final_name = {
+                    let c = seen.entry(name.clone()).or_insert(0);
+                    *c += 1;
+                    if *c == 1 { name } else { format!("{}__{}", name, *c - 1) }
+                };
+                w.start_file(final_name, opts).map_err(|e| AppError::Other(anyhow::anyhow!("zip: {e}")))?;
+                w.write_all(&bytes).map_err(|e| AppError::Other(anyhow::anyhow!("zip write: {e}")))?;
+            }
+            w.finish().map_err(|e| AppError::Other(anyhow::anyhow!("zip finish: {e}")))?;
+        }
+        Ok(buf.into_inner())
+    })
+    .await
+    .map_err(|e| AppError::Other(anyhow::anyhow!("spawn_blocking: {e}")))??;
+
+    Ok((
+        [
+            (axum::http::header::CONTENT_TYPE, "application/zip"),
+            (axum::http::header::CONTENT_DISPOSITION, "attachment; filename=\"simu.zip\""),
+        ],
+        zipped,
+    ).into_response())
+}
+
 #[derive(Serialize, ToSchema)]
 pub struct CommentDto {
     pub id: Uuid,

@@ -192,7 +192,7 @@ pub async fn signup(
     }
 
     crate::audit::record(&state.db, Some(u.id), "signup", Some(&headers), serde_json::json!({})).await;
-    let jar = jar.add(issue_cookie(u.id, u.session_version));
+    let jar = jar.add(issue_cookie(u.id, u.session_version)).add(issue_csrf_cookie());
     Ok((StatusCode::CREATED, jar, Json(UserDto::from(u))))
 }
 
@@ -375,14 +375,14 @@ pub async fn login(
         am.updated_at = Set(chrono::Utc::now());
         let _ = am.update(&state.db).await;
         crate::audit::record(&state.db, Some(uid_copy), "login", Some(&headers), serde_json::json!({})).await;
-        let jar = jar.add(issue_cookie(uid_copy, sv));
+        let jar = jar.add(issue_cookie(uid_copy, sv)).add(issue_csrf_cookie());
         return Ok((jar, Json(UserDto::from(u))));
     }
 
     crate::audit::record(&state.db, Some(u.id), "login", Some(&headers), serde_json::json!({})).await;
     metrics::counter!("simu_login_success_total").increment(1);
     maybe_notify_new_ip(&state, &u, &headers).await;
-    let jar = jar.add(issue_cookie(u.id, u.session_version));
+    let jar = jar.add(issue_cookie(u.id, u.session_version)).add(issue_csrf_cookie());
     Ok((jar, Json(UserDto::from(u))))
 }
 
@@ -500,7 +500,7 @@ pub async fn change_password(
 
     crate::audit::record(&state.db, Some(uid), "password_change", Some(&headers), serde_json::json!({})).await;
     // Refresh cookie with bumped version — old cookies instantly invalid.
-    let jar = jar.add(issue_cookie(uid, new_version));
+    let jar = jar.add(issue_cookie(uid, new_version)).add(issue_csrf_cookie());
     Ok((StatusCode::NO_CONTENT, jar))
 }
 
@@ -573,6 +573,80 @@ pub async fn authenticate(
     }
     // 2) Cookie session
     current_user_id(state, jar).await
+}
+
+const CSRF_COOKIE: &str = "simu_csrf";
+
+fn random_csrf_token() -> String {
+    use argon2::password_hash::rand_core::{OsRng, RngCore};
+    let mut b = [0u8; 24];
+    OsRng.fill_bytes(&mut b);
+    hex::encode(b)
+}
+
+pub fn issue_csrf_cookie() -> Cookie<'static> {
+    let v = random_csrf_token();
+    Cookie::build((CSRF_COOKIE, v))
+        .http_only(false) // readable by JS so client can echo into header
+        .same_site(SameSite::Lax)
+        .secure(false)
+        .path("/")
+        .max_age(time::Duration::days(30))
+        .build()
+}
+
+/// Middleware: double-submit CSRF for cookie-auth mutating requests.
+/// Enabled only when `CSRF_ENFORCE=1`; dev defaults off so existing clients stay green.
+pub async fn csrf_enforce(
+    req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if std::env::var("CSRF_ENFORCE").ok().as_deref() != Some("1") {
+        return next.run(req).await;
+    }
+    let method = req.method().clone();
+    if matches!(method.as_str(), "GET" | "HEAD" | "OPTIONS") {
+        return next.run(req).await;
+    }
+    // Bootstrap endpoints (no session yet) bypass CSRF.
+    let path = req.uri().path();
+    if matches!(
+        path,
+        "/api/auth/signup"
+            | "/api/auth/login"
+            | "/api/auth/password/forgot"
+            | "/api/auth/password/reset"
+            | "/api/auth/email/verify"
+    ) {
+        return next.run(req).await;
+    }
+    // Bearer auth bypasses
+    if let Some(h) = req.headers().get(axum::http::header::AUTHORIZATION)
+        && let Ok(s) = h.to_str()
+        && s.starts_with("Bearer ")
+    {
+        return next.run(req).await;
+    }
+    let cookie_val = req
+        .headers()
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| {
+            s.split(';').find_map(|kv| {
+                let t = kv.trim();
+                t.strip_prefix("simu_csrf=").map(|v| v.to_string())
+            })
+        });
+    let hdr_val = req
+        .headers()
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    match (cookie_val, hdr_val) {
+        (Some(c), Some(h)) if !c.is_empty() && c == h => next.run(req).await,
+        _ => AppError::Unauthorized.into_response(),
+    }
 }
 
 /// Middleware: if the request bears `Authorization: Bearer simu_*`, look up the token's scope
@@ -746,6 +820,6 @@ pub async fn reset_password(
     used.used_at = Set(Some(chrono::Utc::now()));
     used.update(&state.db).await?;
 
-    let jar = jar.add(issue_cookie(user_id, new_version));
+    let jar = jar.add(issue_cookie(user_id, new_version)).add(issue_csrf_cookie());
     Ok((StatusCode::NO_CONTENT, jar))
 }

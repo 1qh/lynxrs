@@ -36,6 +36,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["backup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/stats": {
         parameters: {
             query?: never;
@@ -79,6 +95,22 @@ export interface paths {
         put?: never;
         post?: never;
         delete: operations["delete_user"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{id}/impersonate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["impersonate"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -318,6 +350,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["bulk"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/files/download-zip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["download_zip"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1333,6 +1381,9 @@ export interface components {
             id: string;
             url: string;
         };
+        ZipDownloadInput: {
+            ids: string[];
+        };
     };
     responses: never;
     parameters: never;
@@ -1383,6 +1434,29 @@ export interface operations {
                 content: {
                     "text/csv": unknown;
                 };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    backup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             401: {
                 headers: {
@@ -1460,6 +1534,31 @@ export interface operations {
                 content?: never;
             };
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    impersonate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1932,6 +2031,27 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["BulkResult"];
                 };
+            };
+        };
+    };
+    download_zip: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ZipDownloadInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

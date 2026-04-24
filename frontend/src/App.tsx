@@ -112,6 +112,7 @@ function Home() {
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null)
   const [trash, setTrash] = useState<FileDto[]>([])
   const [orgs, setOrgs] = useState<Array<{ id: string; name: string; slug: string }>>([])
+  const [displayName, setDisplayName] = useState<string>(user.display_name ?? '')
 
   const refresh = useCallback(async () => {
     const { data } = await api.GET('/files', { params: { query: {} } })
@@ -180,6 +181,13 @@ function Home() {
     if (error) { console.error('[share]', error); return }
     setShareUrl((data as { url: string }).url)
   }, [])
+
+  const saveProfile = useCallback(async () => {
+    const name = displayName || 'Alice'
+    const { data } = await api.PATCH('/auth/me', { body: { display_name: name } })
+    if (data) setUser(data as typeof user)
+    setDisplayName(name)
+  }, [displayName, setUser])
 
   const refreshOrgs = useCallback(async () => {
     const { data } = await api.GET('/orgs', {})
@@ -286,6 +294,10 @@ function Home() {
       {shareUrl ? (
         <text className="Muted">share: {shareUrl}</text>
       ) : null}
+      <text className="Muted">display_name: {user.display_name ?? '—'}</text>
+      <view className="Button ButtonGhost" bindtap={saveProfile}>
+        <text className="ButtonText">Save profile (sets "Alice")</text>
+      </view>
       <view className="Button ButtonGhost" bindtap={refreshOrgs}>
         <text className="ButtonText">Load orgs ({orgs.length})</text>
       </view>

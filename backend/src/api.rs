@@ -75,6 +75,7 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         files::BulkResult,
         files::CommentDto,
         files::CommentInput,
+        files::ZipDownloadInput,
         files::PresignedDto,
         files::PresignUploadInput,
         files::PresignUploadDto,
@@ -264,6 +265,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(files::bulk))
         .routes(routes!(files::list_comments, files::add_comment))
         .routes(routes!(files::delete_comment))
+        .routes(routes!(files::download_zip))
         .routes(routes!(files::download, files::rename, files::head_file))
         .routes(routes!(files::delete))
         .routes(routes!(files::create_share, files::list_shares))
@@ -277,6 +279,8 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(admin::delete_user))
         .routes(routes!(admin::lock_user))
         .routes(routes!(admin::unlock_user))
+        .routes(routes!(admin::impersonate))
+        .routes(routes!(admin::backup))
         .routes(routes!(tokens::create_token, tokens::list_tokens))
         .routes(routes!(tokens::revoke_token))
         .routes(routes!(audit::list_mine))
@@ -342,6 +346,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
             .nest("/api", api_router)
             .nest("/api", oauth::router().with_state(state.clone()))
             .merge(events::router().with_state(state))
+            .layer(axum::middleware::from_fn(auth::csrf_enforce))
             .layer(axum::middleware::from_fn_with_state(scope_state, auth::token_scope_enforce))
             .layer(GovernorLayer::new(governor_conf).error_handler(|err| {
                 use axum::response::IntoResponse;

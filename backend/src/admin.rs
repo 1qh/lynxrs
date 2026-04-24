@@ -263,6 +263,67 @@ pub async fn lock_user(
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(post, path = "/admin/backup",
+    responses((status = 200), (status = 401)))]
+pub async fn backup(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+) -> Result<axum::Json<serde_json::Value>> {
+    require_admin(&state, &headers, &jar).await?;
+    let db_url = std::env::var("DATABASE_URL").map_err(|_| AppError::Other(anyhow::anyhow!("DATABASE_URL missing")))?;
+    let ts = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
+    let key = format!("backups/{ts}.sql.gz");
+
+    let out = tokio::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!("pg_dump --no-owner --no-privileges --format=plain '{db_url}' | gzip -9"))
+        .output()
+        .await
+        .map_err(|e| AppError::Other(anyhow::anyhow!("pg_dump spawn: {e}")))?;
+    if !out.status.success() {
+        return Err(AppError::Other(anyhow::anyhow!(
+            "pg_dump failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )));
+    }
+    let size = out.stdout.len() as i64;
+    use object_store::ObjectStoreExt;
+    state
+        .storage
+        .put(&object_store::path::Path::from(key.clone()), object_store::PutPayload::from(bytes::Bytes::from(out.stdout)))
+        .await?;
+    crate::audit::record(&state.db, None, "admin_backup", Some(&headers), serde_json::json!({"key": key, "size": size})).await;
+    Ok(axum::Json(serde_json::json!({"key": key, "size_bytes": size})))
+}
+
+#[utoipa::path(post, path = "/admin/users/{id}/impersonate",
+    responses((status = 200), (status = 404)))]
+pub async fn impersonate(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
+) -> Result<axum::response::Response> {
+    use axum::response::IntoResponse;
+    require_admin(&state, &headers, &jar).await?;
+    let target = user::Entity::find_by_id(id)
+        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+    let admin_uid = crate::auth::current_user_id(&state, &jar).await.ok();
+    crate::audit::record(
+        &state.db,
+        admin_uid,
+        "admin_impersonate",
+        Some(&headers),
+        serde_json::json!({"target_user_id": id}),
+    ).await;
+    let jar = jar.add(crate::auth::issue_cookie_public(target.id, target.session_version));
+    Ok((
+        jar,
+        axum::Json(serde_json::json!({"impersonating": target.email})),
+    ).into_response())
+}
+
 #[utoipa::path(post, path = "/admin/users/{id}/unlock", responses((status = 204), (status = 404)))]
 pub async fn unlock_user(
     State(state): State<AppState>,
