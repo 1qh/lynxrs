@@ -543,6 +543,7 @@ export interface components {
             filename: string;
             /** Format: uuid */
             id: string;
+            sha256?: string | null;
             /** Format: int64 */
             size_bytes: number;
         };

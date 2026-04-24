@@ -29,6 +29,7 @@ pub struct FileDto {
     pub content_type: String,
     pub size_bytes: i64,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    pub sha256: Option<String>,
 }
 
 impl From<file_object::Model> for FileDto {
@@ -39,6 +40,7 @@ impl From<file_object::Model> for FileDto {
             content_type: m.content_type,
             size_bytes: m.size_bytes,
             created_at: m.created_at,
+            sha256: m.sha256,
         }
     }
 }
@@ -168,6 +170,7 @@ pub async fn upload(
         .put(&obj_path, PutPayload::from_bytes(data.clone()))
         .await?;
 
+    let sha = hex::encode(sha2::Sha256::digest(&data));
     let model = file_object::ActiveModel {
         id: Set(id),
         owner_id: Set(uid),
@@ -176,6 +179,7 @@ pub async fn upload(
         content_type: Set(content_type),
         size_bytes: Set(data.len() as i64),
         created_at: Set(chrono::Utc::now()),
+        sha256: Set(Some(sha)),
     }
     .insert(&state.db)
     .await?;
@@ -550,6 +554,7 @@ pub async fn upload_json(
         .await?;
 
     let filename = input.filename.clone();
+    let sha = hex::encode(sha2::Sha256::digest(&data));
     let model = file_object::ActiveModel {
         id: Set(id),
         owner_id: Set(uid),
@@ -558,6 +563,7 @@ pub async fn upload_json(
         content_type: Set(input.content_type),
         size_bytes: Set(data.len() as i64),
         created_at: Set(chrono::Utc::now()),
+        sha256: Set(Some(sha)),
     }
     .insert(&state.db)
     .await?;
