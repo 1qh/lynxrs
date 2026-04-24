@@ -106,6 +106,8 @@ function Home() {
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [mfaSecret, setMfaSecret] = useState<string | null>(null)
+  const [mfaCode, setMfaCode] = useState('')
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
   const [audit, setAudit] = useState<Array<{ action: string; ip?: string | null; created_at: string }>>([])
   const [webhooks, setWebhooks] = useState<Array<{ id: string; url: string; enabled: boolean }>>([])
   const [webhookUrl, setWebhookUrl] = useState('')
@@ -266,6 +268,23 @@ function Home() {
     setMfaSecret((data as { secret: string }).secret)
   }, [])
 
+  const mfaActivate = useCallback(async () => {
+    const code = mfaCode.trim()
+    if (!code) return
+    const { error } = await api.POST('/mfa/activate', { body: { code } })
+    if (error) { console.error('[mfa activate]', error); return }
+    const { data } = await api.GET('/auth/me', {})
+    if (data) setUser(data as typeof user)
+    setMfaCode('')
+    setMfaSecret(null)
+  }, [mfaCode, setUser])
+
+  const mfaGenerateRecovery = useCallback(async () => {
+    const { data, error } = await api.POST('/mfa/recovery-codes', {})
+    if (error) { console.error('[mfa recovery]', error); return }
+    setRecoveryCodes((data as { codes: string[] }).codes)
+  }, [])
+
   const loadStats = useCallback(async () => {
     const { data } = await api.GET('/admin/stats', {})
     if (data) setStats(data as AdminStats)
@@ -418,15 +437,43 @@ function Home() {
         </view>
       ) : null}
       {!user.totp_enabled ? (
-        <view className="Button ButtonGhost" bindtap={mfaEnroll}>
-          <text className="ButtonText">Enable MFA (TOTP)</text>
+        <view>
+          <view className="Button ButtonGhost" bindtap={mfaEnroll}>
+            <text className="ButtonText">Enable MFA (TOTP)</text>
+          </view>
+          {mfaSecret ? (
+            <view>
+              <text className="Muted">Scan this secret into your authenticator:</text>
+              <text className="FileName">{mfaSecret}</text>
+              <input
+                className="Input"
+                placeholder="6-digit code"
+                type="text"
+                value={mfaCode}
+                bindinput={(e: { detail: { value: string } }) => setMfaCode(e.detail.value)}
+              />
+              <view className="Button" bindtap={mfaActivate}>
+                <text className="ButtonText">Activate MFA</text>
+              </view>
+            </view>
+          ) : null}
         </view>
       ) : (
-        <text className="Muted">MFA enabled ✓</text>
+        <view>
+          <text className="Muted">MFA enabled ✓</text>
+          <view className="Button ButtonGhost" bindtap={mfaGenerateRecovery}>
+            <text className="ButtonText">Generate recovery codes</text>
+          </view>
+          {recoveryCodes.length > 0 ? (
+            <view className="RecoveryCodes">
+              <text className="Muted">Save these codes now — each works once:</text>
+              {recoveryCodes.map((c, i) => (
+                <text key={i} className="FileName">{c}</text>
+              ))}
+            </view>
+          ) : null}
+        </view>
       )}
-      {mfaSecret ? (
-        <text className="Muted">MFA secret: {mfaSecret} — scan in authenticator, then POST /api/mfa/activate</text>
-      ) : null}
       <view className="Button ButtonGhost" bindtap={logout}>
         <text className="ButtonText">Log out</text>
       </view>
