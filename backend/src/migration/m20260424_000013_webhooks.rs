@@ -11,12 +11,7 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Webhooks::Table)
                     .if_not_exists()
-                    .col(
-                        ColumnDef::new(Webhooks::Id)
-                            .uuid()
-                            .not_null()
-                            .primary_key(),
-                    )
+                    .col(ColumnDef::new(Webhooks::Id).uuid().not_null().primary_key())
                     .col(ColumnDef::new(Webhooks::UserId).uuid().not_null())
                     .col(ColumnDef::new(Webhooks::Url).string().not_null())
                     .col(ColumnDef::new(Webhooks::Secret).string().not_null())
@@ -60,9 +55,18 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum Users { Table, Id }
+enum Users {
+    Table,
+    Id,
+}
 
 #[derive(Iden)]
 enum Webhooks {
-    Table, Id, UserId, Url, Secret, Enabled, CreatedAt,
+    Table,
+    Id,
+    UserId,
+    Url,
+    Secret,
+    Enabled,
+    CreatedAt,
 }

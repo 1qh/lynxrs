@@ -5,7 +5,9 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::entity::{audit_event, email_verification, file_object, password_reset, webhook_delivery};
+use crate::entity::{
+    audit_event, email_verification, file_object, password_reset, webhook_delivery,
+};
 
 /// Spawn a task that periodically deletes expired/used tokens.
 pub fn spawn(
@@ -23,7 +25,10 @@ pub fn spawn(
     });
 }
 
-async fn run_once(db: &DatabaseConnection, storage: &dyn object_store::ObjectStore) -> anyhow::Result<()> {
+async fn run_once(
+    db: &DatabaseConnection,
+    storage: &dyn object_store::ObjectStore,
+) -> anyhow::Result<()> {
     let now = chrono::Utc::now();
 
     // Delete password reset tokens that are either expired or consumed.
@@ -57,7 +62,11 @@ async fn run_once(db: &DatabaseConnection, storage: &dyn object_store::ObjectSto
     for r in old {
         let p = object_store::path::Path::from(r.storage_key.clone());
         let _ = storage.delete(&p).await;
-        if file_object::Entity::delete_by_id(r.id).exec(db).await.is_ok() {
+        if file_object::Entity::delete_by_id(r.id)
+            .exec(db)
+            .await
+            .is_ok()
+        {
             purged += 1;
         }
     }

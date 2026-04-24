@@ -28,4 +28,7 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum FileObjects { Table, Sha256 }
+enum FileObjects {
+    Table,
+    Sha256,
+}

@@ -9,16 +9,19 @@ impl MigrationTrait for Migration {
         manager
             .alter_table(
                 Table::alter()
-                    .table(Users::Table)
-                    .add_column(ColumnDef::new(Users::DisplayName).string().null())
+                    .table(AuditEvents::Table)
+                    .add_column(ColumnDef::new(AuditEvents::PrevHash).string().null())
+                    .add_column(ColumnDef::new(AuditEvents::RowHash).string().null())
                     .to_owned(),
             )
             .await?;
         manager
-            .alter_table(
-                Table::alter()
-                    .table(Users::Table)
-                    .add_column(ColumnDef::new(Users::AvatarUrl).string().null())
+            .create_index(
+                Index::create()
+                    .name("idx_audit_created_id")
+                    .table(AuditEvents::Table)
+                    .col(AuditEvents::CreatedAt)
+                    .col(AuditEvents::Id)
                     .to_owned(),
             )
             .await
@@ -27,9 +30,9 @@ impl MigrationTrait for Migration {
         manager
             .alter_table(
                 Table::alter()
-                    .table(Users::Table)
-                    .drop_column(Users::DisplayName)
-                    .drop_column(Users::AvatarUrl)
+                    .table(AuditEvents::Table)
+                    .drop_column(AuditEvents::PrevHash)
+                    .drop_column(AuditEvents::RowHash)
                     .to_owned(),
             )
             .await
@@ -37,8 +40,10 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum Users {
+enum AuditEvents {
     Table,
-    DisplayName,
-    AvatarUrl,
+    Id,
+    CreatedAt,
+    PrevHash,
+    RowHash,
 }

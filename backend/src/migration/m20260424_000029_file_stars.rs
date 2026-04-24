@@ -50,8 +50,19 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum Users { Table, Id }
+enum Users {
+    Table,
+    Id,
+}
 #[derive(Iden)]
-enum FileObjects { Table, Id }
+enum FileObjects {
+    Table,
+    Id,
+}
 #[derive(Iden)]
-enum FileStars { Table, UserId, FileId, CreatedAt }
+enum FileStars {
+    Table,
+    UserId,
+    FileId,
+    CreatedAt,
+}

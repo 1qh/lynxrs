@@ -106,8 +106,7 @@ pub async fn sse_handler(
             }
         }
     };
-    Ok(axum::response::Sse::new(stream)
-        .keep_alive(axum::response::sse::KeepAlive::default()))
+    Ok(axum::response::Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::default()))
 }
 
 pub fn router() -> Router<AppState> {

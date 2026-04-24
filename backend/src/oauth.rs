@@ -20,7 +20,11 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::{entity::user, error::{AppError, Result}, state::AppState};
+use crate::{
+    entity::user,
+    error::{AppError, Result},
+    state::AppState,
+};
 
 #[derive(Clone)]
 struct Config {
@@ -151,7 +155,8 @@ pub async fn callback(
         existing
     } else {
         // Create account; random-hashed placeholder password (user can reset).
-        let placeholder_hash = crate::auth::hash_password_sync("oauth_placeholder_please_reset".into()).await?;
+        let placeholder_hash =
+            crate::auth::hash_password_sync("oauth_placeholder_please_reset".into()).await?;
         user::ActiveModel {
             id: Set(Uuid::now_v7()),
             email: Set(email.clone()),
@@ -172,7 +177,14 @@ pub async fn callback(
         .await?
     };
 
-    crate::audit::record(&app.db, Some(u.id), "login_oauth", Some(&headers), serde_json::json!({"email": email})).await;
+    crate::audit::record(
+        &app.db,
+        Some(u.id),
+        "login_oauth",
+        Some(&headers),
+        serde_json::json!({"email": email}),
+    )
+    .await;
     metrics::counter!("simu_login_success_total").increment(1);
 
     let jar = jar

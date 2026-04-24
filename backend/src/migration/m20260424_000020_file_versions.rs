@@ -11,13 +11,26 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(FileVersions::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(FileVersions::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(FileVersions::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(FileVersions::FileId).uuid().not_null())
                     .col(ColumnDef::new(FileVersions::VersionNo).integer().not_null())
                     .col(ColumnDef::new(FileVersions::StorageKey).string().not_null())
                     .col(ColumnDef::new(FileVersions::Filename).string().not_null())
-                    .col(ColumnDef::new(FileVersions::ContentType).string().not_null())
-                    .col(ColumnDef::new(FileVersions::SizeBytes).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(FileVersions::ContentType)
+                            .string()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(FileVersions::SizeBytes)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(FileVersions::Sha256).string().null())
                     .col(
                         ColumnDef::new(FileVersions::CreatedAt)
@@ -55,9 +68,21 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum FileObjects { Table, Id }
+enum FileObjects {
+    Table,
+    Id,
+}
 
 #[derive(Iden)]
 enum FileVersions {
-    Table, Id, FileId, VersionNo, StorageKey, Filename, ContentType, SizeBytes, Sha256, CreatedAt,
+    Table,
+    Id,
+    FileId,
+    VersionNo,
+    StorageKey,
+    Filename,
+    ContentType,
+    SizeBytes,
+    Sha256,
+    CreatedAt,
 }

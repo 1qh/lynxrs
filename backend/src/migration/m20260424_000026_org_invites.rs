@@ -11,13 +11,31 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(OrgInvites::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(OrgInvites::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(OrgInvites::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(OrgInvites::OrgId).uuid().not_null())
                     .col(ColumnDef::new(OrgInvites::Email).string().not_null())
                     .col(ColumnDef::new(OrgInvites::Role).string().not_null())
-                    .col(ColumnDef::new(OrgInvites::TokenHash).string().not_null().unique_key())
-                    .col(ColumnDef::new(OrgInvites::ExpiresAt).timestamp_with_time_zone().not_null())
-                    .col(ColumnDef::new(OrgInvites::AcceptedAt).timestamp_with_time_zone().null())
+                    .col(
+                        ColumnDef::new(OrgInvites::TokenHash)
+                            .string()
+                            .not_null()
+                            .unique_key(),
+                    )
+                    .col(
+                        ColumnDef::new(OrgInvites::ExpiresAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(OrgInvites::AcceptedAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
                     .col(
                         ColumnDef::new(OrgInvites::CreatedAt)
                             .timestamp_with_time_zone()
@@ -43,6 +61,19 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum Orgs { Table, Id }
+enum Orgs {
+    Table,
+    Id,
+}
 #[derive(Iden)]
-enum OrgInvites { Table, Id, OrgId, Email, Role, TokenHash, ExpiresAt, AcceptedAt, CreatedAt }
+enum OrgInvites {
+    Table,
+    Id,
+    OrgId,
+    Email,
+    Role,
+    TokenHash,
+    ExpiresAt,
+    AcceptedAt,
+    CreatedAt,
+}

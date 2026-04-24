@@ -5,7 +5,11 @@ use serde::{Deserialize, Serialize};
 use totp_rs::{Algorithm, Secret, TOTP};
 use utoipa::ToSchema;
 
-use crate::{entity::{mfa_recovery, user}, error::{AppError, Result}, state::AppState};
+use crate::{
+    entity::{mfa_recovery, user},
+    error::{AppError, Result},
+    state::AppState,
+};
 use rand::prelude::*;
 use sea_orm::{ColumnTrait, QueryFilter};
 use sha2::Digest;
@@ -16,8 +20,16 @@ fn build_totp(secret_b32: &str, account: &str) -> Result<TOTP> {
     let secret = Secret::Encoded(secret_b32.to_string())
         .to_bytes()
         .map_err(|e| AppError::Other(anyhow::anyhow!(format!("totp secret: {e:?}"))))?;
-    TOTP::new(Algorithm::SHA1, 6, 1, 30, secret, Some(ISSUER.to_string()), account.to_string())
-        .map_err(|e| AppError::Other(anyhow::anyhow!(format!("totp build: {e:?}"))))
+    TOTP::new(
+        Algorithm::SHA1,
+        6,
+        1,
+        30,
+        secret,
+        Some(ISSUER.to_string()),
+        account.to_string(),
+    )
+    .map_err(|e| AppError::Other(anyhow::anyhow!(format!("totp build: {e:?}"))))
 }
 
 #[derive(Serialize, ToSchema)]
@@ -47,7 +59,10 @@ pub async fn enroll(
     am.totp_secret = Set(Some(secret_b32.clone()));
     am.updated_at = Set(chrono::Utc::now());
     am.update(&state.db).await?;
-    Ok(Json(EnrollDto { secret: secret_b32, otpauth_url: url }))
+    Ok(Json(EnrollDto {
+        secret: secret_b32,
+        otpauth_url: url,
+    }))
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -71,16 +86,29 @@ pub async fn activate(
     if u.totp_enabled {
         return Err(AppError::Conflict("MFA already active".into()));
     }
-    let secret = u.totp_secret.clone().ok_or_else(|| AppError::BadRequest("call /mfa/enroll first".into()))?;
+    let secret = u
+        .totp_secret
+        .clone()
+        .ok_or_else(|| AppError::BadRequest("call /mfa/enroll first".into()))?;
     let totp = build_totp(&secret, &u.email)?;
-    if !totp.check_current(&input.code).map_err(|e| AppError::Other(anyhow::anyhow!(format!("totp: {e:?}"))))? {
+    if !totp
+        .check_current(&input.code)
+        .map_err(|e| AppError::Other(anyhow::anyhow!(format!("totp: {e:?}"))))?
+    {
         return Err(AppError::BadRequest("invalid code".into()));
     }
     let mut am: user::ActiveModel = u.into();
     am.totp_enabled = Set(true);
     am.updated_at = Set(chrono::Utc::now());
     am.update(&state.db).await?;
-    crate::audit::record(&state.db, Some(uid), "mfa_activated", Some(&headers), serde_json::json!({})).await;
+    crate::audit::record(
+        &state.db,
+        Some(uid),
+        "mfa_activated",
+        Some(&headers),
+        serde_json::json!({}),
+    )
+    .await;
     metrics::counter!("simu_mfa_activated_total").increment(1);
     Ok(StatusCode::NO_CONTENT)
 }
@@ -101,9 +129,15 @@ pub async fn disable(
     if !u.totp_enabled {
         return Err(AppError::BadRequest("MFA not active".into()));
     }
-    let secret = u.totp_secret.clone().ok_or_else(|| AppError::Other(anyhow::anyhow!("missing secret")))?;
+    let secret = u
+        .totp_secret
+        .clone()
+        .ok_or_else(|| AppError::Other(anyhow::anyhow!("missing secret")))?;
     let totp = build_totp(&secret, &u.email)?;
-    if !totp.check_current(&input.code).map_err(|e| AppError::Other(anyhow::anyhow!(format!("totp: {e:?}"))))? {
+    if !totp
+        .check_current(&input.code)
+        .map_err(|e| AppError::Other(anyhow::anyhow!(format!("totp: {e:?}"))))?
+    {
         return Err(AppError::BadRequest("invalid code".into()));
     }
     let mut am: user::ActiveModel = u.into();
@@ -111,7 +145,14 @@ pub async fn disable(
     am.totp_secret = Set(None);
     am.updated_at = Set(chrono::Utc::now());
     am.update(&state.db).await?;
-    crate::audit::record(&state.db, Some(uid), "mfa_disabled", Some(&headers), serde_json::json!({})).await;
+    crate::audit::record(
+        &state.db,
+        Some(uid),
+        "mfa_disabled",
+        Some(&headers),
+        serde_json::json!({}),
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -135,7 +176,11 @@ fn gen_recovery_code() -> String {
     (0..10)
         .map(|_| {
             let n: u32 = rng.random_range(0..36);
-            if n < 10 { (b'0' + n as u8) as char } else { (b'A' + (n - 10) as u8) as char }
+            if n < 10 {
+                (b'0' + n as u8) as char
+            } else {
+                (b'A' + (n - 10) as u8) as char
+            }
         })
         .collect()
 }
@@ -153,7 +198,10 @@ pub async fn generate_recovery_codes(
     jar: PrivateCookieJar,
 ) -> Result<Json<RecoveryCodesDto>> {
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
-    let u = user::Entity::find_by_id(uid).one(&state.db).await?.ok_or(AppError::Unauthorized)?;
+    let u = user::Entity::find_by_id(uid)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
     if !u.totp_enabled {
         return Err(AppError::BadRequest("activate MFA first".into()));
     }
@@ -176,7 +224,14 @@ pub async fn generate_recovery_codes(
         .await?;
         codes.push(code);
     }
-    crate::audit::record(&state.db, Some(uid), "mfa_recovery_generated", Some(&headers), serde_json::json!({})).await;
+    crate::audit::record(
+        &state.db,
+        Some(uid),
+        "mfa_recovery_generated",
+        Some(&headers),
+        serde_json::json!({}),
+    )
+    .await;
     Ok(Json(RecoveryCodesDto { codes }))
 }
 

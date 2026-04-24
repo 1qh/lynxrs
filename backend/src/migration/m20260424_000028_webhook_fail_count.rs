@@ -33,4 +33,7 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum Webhooks { Table, ConsecutiveFailures }
+enum Webhooks {
+    Table,
+    ConsecutiveFailures,
+}

@@ -43,7 +43,12 @@ impl Mailer {
         Ok(())
     }
 
-    pub async fn send_share_link(&self, to: &str, share_url: &str, filename: &str) -> anyhow::Result<()> {
+    pub async fn send_share_link(
+        &self,
+        to: &str,
+        share_url: &str,
+        filename: &str,
+    ) -> anyhow::Result<()> {
         let body = format!(
             "A simu user shared a file with you.\n\n  File:  {filename}\n  Link:  {share_url}\n\nThe link may expire or be revoked.\n\n— simu"
         );
@@ -71,11 +76,7 @@ impl Mailer {
         Ok(())
     }
 
-    pub async fn send_email_verification(
-        &self,
-        to: &str,
-        verify_url: &str,
-    ) -> anyhow::Result<()> {
+    pub async fn send_email_verification(&self, to: &str, verify_url: &str) -> anyhow::Result<()> {
         let body = format!(
             "Welcome to simu!\n\nConfirm your email by clicking:\n\n  {verify_url}\n\nLink expires in 48 hours.\n\n— simu"
         );

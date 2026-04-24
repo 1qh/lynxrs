@@ -28,4 +28,7 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum FileObjects { Table, Description }
+enum FileObjects {
+    Table,
+    Description,
+}

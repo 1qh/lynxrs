@@ -30,6 +30,7 @@ mod m20260424_000027_file_comments;
 mod m20260424_000028_webhook_fail_count;
 mod m20260424_000029_file_stars;
 mod m20260424_000030_file_description;
+mod m20260424_000031_audit_hash_chain;
 
 pub struct Migrator;
 
@@ -67,6 +68,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260424_000028_webhook_fail_count::Migration),
             Box::new(m20260424_000029_file_stars::Migration),
             Box::new(m20260424_000030_file_description::Migration),
+            Box::new(m20260424_000031_audit_hash_chain::Migration),
         ]
     }
 }

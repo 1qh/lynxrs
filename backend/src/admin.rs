@@ -1,6 +1,9 @@
 use axum::{Json, extract::State};
 use axum_extra::extract::PrivateCookieJar;
-use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set, Statement,
+};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -271,7 +274,14 @@ pub async fn delete_user(
     if res.rows_affected == 0 {
         return Err(AppError::NotFound);
     }
-    crate::audit::record(&state.db, None, "admin_user_deleted", Some(&headers), serde_json::json!({"user_id": id})).await;
+    crate::audit::record(
+        &state.db,
+        None,
+        "admin_user_deleted",
+        Some(&headers),
+        serde_json::json!({"user_id": id}),
+    )
+    .await;
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
@@ -283,13 +293,23 @@ pub async fn lock_user(
     axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
 ) -> Result<axum::http::StatusCode> {
     require_admin(&state, &headers, &jar).await?;
-    let u = user::Entity::find_by_id(id).one(&state.db).await?.ok_or(AppError::NotFound)?;
+    let u = user::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
     let mut am: user::ActiveModel = u.into();
     am.locked_until = Set(Some(chrono::Utc::now() + chrono::Duration::days(3650)));
     am.session_version = Set(am.session_version.unwrap() + 1);
     am.updated_at = Set(chrono::Utc::now());
     am.update(&state.db).await?;
-    crate::audit::record(&state.db, None, "admin_user_locked", Some(&headers), serde_json::json!({"user_id": id})).await;
+    crate::audit::record(
+        &state.db,
+        None,
+        "admin_user_locked",
+        Some(&headers),
+        serde_json::json!({"user_id": id}),
+    )
+    .await;
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
@@ -301,13 +321,16 @@ pub async fn backup(
     jar: PrivateCookieJar,
 ) -> Result<axum::Json<serde_json::Value>> {
     require_admin(&state, &headers, &jar).await?;
-    let db_url = std::env::var("DATABASE_URL").map_err(|_| AppError::Other(anyhow::anyhow!("DATABASE_URL missing")))?;
+    let db_url = std::env::var("DATABASE_URL")
+        .map_err(|_| AppError::Other(anyhow::anyhow!("DATABASE_URL missing")))?;
     let ts = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
     let key = format!("backups/{ts}.sql.gz");
 
     let out = tokio::process::Command::new("sh")
         .arg("-c")
-        .arg(format!("pg_dump --no-owner --no-privileges --format=plain '{db_url}' | gzip -9"))
+        .arg(format!(
+            "pg_dump --no-owner --no-privileges --format=plain '{db_url}' | gzip -9"
+        ))
         .output()
         .await
         .map_err(|e| AppError::Other(anyhow::anyhow!("pg_dump spawn: {e}")))?;
@@ -321,10 +344,22 @@ pub async fn backup(
     use object_store::ObjectStoreExt;
     state
         .storage
-        .put(&object_store::path::Path::from(key.clone()), object_store::PutPayload::from(bytes::Bytes::from(out.stdout)))
+        .put(
+            &object_store::path::Path::from(key.clone()),
+            object_store::PutPayload::from(bytes::Bytes::from(out.stdout)),
+        )
         .await?;
-    crate::audit::record(&state.db, None, "admin_backup", Some(&headers), serde_json::json!({"key": key, "size": size})).await;
-    Ok(axum::Json(serde_json::json!({"key": key, "size_bytes": size})))
+    crate::audit::record(
+        &state.db,
+        None,
+        "admin_backup",
+        Some(&headers),
+        serde_json::json!({"key": key, "size": size}),
+    )
+    .await;
+    Ok(axum::Json(
+        serde_json::json!({"key": key, "size_bytes": size}),
+    ))
 }
 
 #[utoipa::path(post, path = "/admin/users/{id}/impersonate",
@@ -338,7 +373,9 @@ pub async fn impersonate(
     use axum::response::IntoResponse;
     require_admin(&state, &headers, &jar).await?;
     let target = user::Entity::find_by_id(id)
-        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
     let admin_uid = crate::auth::current_user_id(&state, &jar).await.ok();
     crate::audit::record(
         &state.db,
@@ -346,12 +383,17 @@ pub async fn impersonate(
         "admin_impersonate",
         Some(&headers),
         serde_json::json!({"target_user_id": id}),
-    ).await;
-    let jar = jar.add(crate::auth::issue_cookie_public(target.id, target.session_version));
+    )
+    .await;
+    let jar = jar.add(crate::auth::issue_cookie_public(
+        target.id,
+        target.session_version,
+    ));
     Ok((
         jar,
         axum::Json(serde_json::json!({"impersonating": target.email})),
-    ).into_response())
+    )
+        .into_response())
 }
 
 #[utoipa::path(post, path = "/admin/users/{id}/unlock", responses((status = 204), (status = 404)))]
@@ -362,16 +404,25 @@ pub async fn unlock_user(
     axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
 ) -> Result<axum::http::StatusCode> {
     require_admin(&state, &headers, &jar).await?;
-    let u = user::Entity::find_by_id(id).one(&state.db).await?.ok_or(AppError::NotFound)?;
+    let u = user::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
     let mut am: user::ActiveModel = u.into();
     am.locked_until = Set(None);
     am.failed_login_count = Set(0);
     am.updated_at = Set(chrono::Utc::now());
     am.update(&state.db).await?;
-    crate::audit::record(&state.db, None, "admin_user_unlocked", Some(&headers), serde_json::json!({"user_id": id})).await;
+    crate::audit::record(
+        &state.db,
+        None,
+        "admin_user_unlocked",
+        Some(&headers),
+        serde_json::json!({"user_id": id}),
+    )
+    .await;
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
-
 
 #[utoipa::path(get, path = "/admin/orgs", responses((status = 200), (status = 401)))]
 pub async fn list_all_orgs(
@@ -382,8 +433,11 @@ pub async fn list_all_orgs(
     require_admin(&state, &headers, &jar).await?;
     let rows = org::Entity::find()
         .order_by_desc(org::Column::CreatedAt)
-        .all(&state.db).await?;
-    Ok(axum::Json(rows.into_iter().map(crate::orgs::OrgDto::from).collect()))
+        .all(&state.db)
+        .await?;
+    Ok(axum::Json(
+        rows.into_iter().map(crate::orgs::OrgDto::from).collect(),
+    ))
 }
 
 #[utoipa::path(get, path = "/admin/webhooks",
@@ -397,8 +451,13 @@ pub async fn list_all_webhooks(
     require_admin(&state, &headers, &jar).await?;
     let rows = webhook::Entity::find()
         .order_by_desc(webhook::Column::CreatedAt)
-        .all(&state.db).await?;
-    Ok(axum::Json(rows.into_iter().map(crate::webhooks::WebhookDto::from).collect()))
+        .all(&state.db)
+        .await?;
+    Ok(axum::Json(
+        rows.into_iter()
+            .map(crate::webhooks::WebhookDto::from)
+            .collect(),
+    ))
 }
 
 #[derive(Serialize, ToSchema)]
@@ -426,18 +485,23 @@ pub async fn user_detail(
     axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
 ) -> Result<Json<UserDetail>> {
     require_admin(&state, &headers, &jar).await?;
-    let u = user::Entity::find_by_id(id).one(&state.db).await?.ok_or(AppError::NotFound)?;
+    let u = user::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
     use crate::entity::{file_object as fo, membership};
     let orgs: Vec<uuid::Uuid> = membership::Entity::find()
         .filter(membership::Column::UserId.eq(id))
         .select_only()
         .column(membership::Column::OrgId)
         .into_tuple()
-        .all(&state.db).await?;
+        .all(&state.db)
+        .await?;
     let files_count = fo::Entity::find()
         .filter(fo::Column::OwnerId.eq(id))
         .filter(fo::Column::DeletedAt.is_null())
-        .count(&state.db).await?;
+        .count(&state.db)
+        .await?;
     Ok(Json(UserDetail {
         id: u.id,
         email: u.email,
@@ -445,7 +509,10 @@ pub async fn user_detail(
         display_name: u.display_name,
         email_verified: u.email_verified_at.is_some(),
         totp_enabled: u.totp_enabled,
-        locked: u.locked_until.map(|t| t > chrono::Utc::now()).unwrap_or(false),
+        locked: u
+            .locked_until
+            .map(|t| t > chrono::Utc::now())
+            .unwrap_or(false),
         failed_login_count: u.failed_login_count,
         created_at: u.created_at,
         updated_at: u.updated_at,

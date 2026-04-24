@@ -43,4 +43,9 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum FileObjects { Table, OwnerId, CreatedAt, DeletedAt }
+enum FileObjects {
+    Table,
+    OwnerId,
+    CreatedAt,
+    DeletedAt,
+}

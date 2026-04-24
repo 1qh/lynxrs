@@ -117,6 +117,14 @@ admin-promote email:
   cd backend && DATABASE_URL=$(grep ^DATABASE_URL .env | cut -d= -f2-) \
     cargo run --bin simu-admin -- promote --email {{email}}
 
+# Seed demo data for manual UI testing (admin + 3 users + 1 org + 18 files).
+seed:
+  bash backend/scripts/seed.sh
+
+# End-to-end backup+restore verification (pg_dump → minio → restore → diff counts).
+backup-restore-e2e:
+  S3_BUCKET=simu-uploads bash backend/scripts/backup-restore-e2e.sh
+
 # ────────── all ──────────
 
 ci:

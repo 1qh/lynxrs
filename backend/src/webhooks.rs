@@ -1,8 +1,15 @@
-use axum::{Json, extract::{Path, State}, http::HeaderMap, http::StatusCode};
+use axum::{
+    Json,
+    extract::{Path, State},
+    http::HeaderMap,
+    http::StatusCode,
+};
 use axum_extra::extract::PrivateCookieJar;
 use hmac::{Hmac, KeyInit, Mac};
 use rand::prelude::*;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use utoipa::ToSchema;
@@ -10,7 +17,10 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    entity::{webhook, webhook_delivery}, error::{AppError, Result}, events::EventMsg, state::AppState,
+    entity::{webhook, webhook_delivery},
+    error::{AppError, Result},
+    events::EventMsg,
+    state::AppState,
 };
 
 type HmacSha256 = Hmac<Sha256>;
@@ -25,7 +35,12 @@ pub struct WebhookDto {
 
 impl From<webhook::Model> for WebhookDto {
     fn from(m: webhook::Model) -> Self {
-        Self { id: m.id, url: m.url, enabled: m.enabled, created_at: m.created_at }
+        Self {
+            id: m.id,
+            url: m.url,
+            enabled: m.enabled,
+            created_at: m.created_at,
+        }
     }
 }
 
@@ -54,7 +69,9 @@ pub async fn create_webhook(
     jar: PrivateCookieJar,
     Json(input): Json<CreateWebhookInput>,
 ) -> Result<(StatusCode, Json<WebhookCreated>)> {
-    input.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
+    input
+        .validate()
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let secret = gen_secret();
     let model = webhook::ActiveModel {
@@ -68,7 +85,13 @@ pub async fn create_webhook(
     }
     .insert(&state.db)
     .await?;
-    Ok((StatusCode::CREATED, Json(WebhookCreated { webhook: model.into(), secret })))
+    Ok((
+        StatusCode::CREATED,
+        Json(WebhookCreated {
+            webhook: model.into(),
+            secret,
+        }),
+    ))
 }
 
 #[utoipa::path(get, path = "/webhooks", responses((status = 200, body = [WebhookDto])))]
@@ -94,8 +117,13 @@ pub async fn revoke_webhook(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
-    let row = webhook::Entity::find_by_id(id).one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if row.user_id != uid { return Err(AppError::NotFound); }
+    let row = webhook::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if row.user_id != uid {
+        return Err(AppError::NotFound);
+    }
     webhook::Entity::delete_by_id(id).exec(&state.db).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -121,19 +149,33 @@ pub async fn list_deliveries(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<DeliveryDto>>> {
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
-    let hook = webhook::Entity::find_by_id(id).one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if hook.user_id != uid { return Err(AppError::NotFound); }
+    let hook = webhook::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if hook.user_id != uid {
+        return Err(AppError::NotFound);
+    }
     let rows = webhook_delivery::Entity::find()
         .filter(webhook_delivery::Column::WebhookId.eq(id))
         .order_by_desc(webhook_delivery::Column::CreatedAt)
         .limit(200)
         .all(&state.db)
         .await?;
-    Ok(Json(rows.into_iter().map(|r| DeliveryDto {
-        id: r.id, webhook_id: r.webhook_id, attempt: r.attempt,
-        status: r.status, duration_ms: r.duration_ms, error: r.error,
-        event_kind: r.event_kind, created_at: r.created_at,
-    }).collect()))
+    Ok(Json(
+        rows.into_iter()
+            .map(|r| DeliveryDto {
+                id: r.id,
+                webhook_id: r.webhook_id,
+                attempt: r.attempt,
+                status: r.status,
+                duration_ms: r.duration_ms,
+                error: r.error,
+                event_kind: r.event_kind,
+                created_at: r.created_at,
+            })
+            .collect(),
+    ))
 }
 
 #[derive(Serialize, ToSchema)]
@@ -152,9 +194,15 @@ pub async fn test_webhook(
     Path(id): Path<Uuid>,
 ) -> Result<Json<TestResult>> {
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
-    let h = webhook::Entity::find_by_id(id).one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if h.user_id != uid { return Err(AppError::NotFound); }
-    let body = serde_json::json!({"kind":"test","at_ms":chrono::Utc::now().timestamp_millis()}).to_string();
+    let h = webhook::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if h.user_id != uid {
+        return Err(AppError::NotFound);
+    }
+    let body = serde_json::json!({"kind":"test","at_ms":chrono::Utc::now().timestamp_millis()})
+        .to_string();
     let mac = HmacSha256::new_from_slice(h.secret.as_bytes()).unwrap();
     let mut m = mac.clone();
     m.update(body.as_bytes());
@@ -188,7 +236,11 @@ pub async fn test_webhook(
     }
     .insert(&state.db)
     .await;
-    Ok(Json(TestResult { status, error: err, duration_ms: elapsed }))
+    Ok(Json(TestResult {
+        status,
+        error: err,
+        duration_ms: elapsed,
+    }))
 }
 
 #[utoipa::path(post, path = "/webhooks/{id}/enable",
@@ -200,8 +252,13 @@ pub async fn enable_webhook(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
-    let h = webhook::Entity::find_by_id(id).one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if h.user_id != uid { return Err(AppError::NotFound); }
+    let h = webhook::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if h.user_id != uid {
+        return Err(AppError::NotFound);
+    }
     let mut am: webhook::ActiveModel = h.into();
     am.enabled = Set(true);
     am.consecutive_failures = Set(0);
@@ -218,12 +275,16 @@ pub fn spawn_dispatcher(state: AppState) {
     tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
             let (uid, body, kind) = match &msg {
-                EventMsg::FileCreated { owner_id, .. } => {
-                    (*owner_id, serde_json::to_string(&msg).unwrap_or_default(), "file_created")
-                }
-                EventMsg::FileDeleted { owner_id, .. } => {
-                    (*owner_id, serde_json::to_string(&msg).unwrap_or_default(), "file_deleted")
-                }
+                EventMsg::FileCreated { owner_id, .. } => (
+                    *owner_id,
+                    serde_json::to_string(&msg).unwrap_or_default(),
+                    "file_created",
+                ),
+                EventMsg::FileDeleted { owner_id, .. } => (
+                    *owner_id,
+                    serde_json::to_string(&msg).unwrap_or_default(),
+                    "file_deleted",
+                ),
                 _ => continue,
             };
             let hooks = match webhook::Entity::find()
@@ -233,7 +294,10 @@ pub fn spawn_dispatcher(state: AppState) {
                 .await
             {
                 Ok(h) => h,
-                Err(e) => { tracing::warn!(error=%e, "webhook lookup failed"); continue }
+                Err(e) => {
+                    tracing::warn!(error=%e, "webhook lookup failed");
+                    continue;
+                }
             };
             for h in hooks {
                 let client = client.clone();
@@ -281,8 +345,12 @@ pub fn spawn_dispatcher(state: AppState) {
                                 ok_once = true;
                                 break;
                             }
-                            Ok(r) => tracing::warn!(webhook_id=%h.id, attempt, status=%r.status(), "webhook non-2xx"),
-                            Err(e) => tracing::warn!(webhook_id=%h.id, attempt, error=%e, "webhook delivery failed"),
+                            Ok(r) => {
+                                tracing::warn!(webhook_id=%h.id, attempt, status=%r.status(), "webhook non-2xx")
+                            }
+                            Err(e) => {
+                                tracing::warn!(webhook_id=%h.id, attempt, error=%e, "webhook delivery failed")
+                            }
                         }
                         if attempt == 4 {
                             metrics::counter!("simu_webhooks_failed_total").increment(1);
@@ -292,7 +360,11 @@ pub fn spawn_dispatcher(state: AppState) {
                         delay_ms *= 2;
                     }
                     // Persist consecutive_failures; auto-disable at 10.
-                    let new_count = if ok_once { 0 } else { h.consecutive_failures + 1 };
+                    let new_count = if ok_once {
+                        0
+                    } else {
+                        h.consecutive_failures + 1
+                    };
                     let should_disable = new_count >= 10;
                     let mut am: webhook::ActiveModel = h.clone().into();
                     am.consecutive_failures = Set(new_count);

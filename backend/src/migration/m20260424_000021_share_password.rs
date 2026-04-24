@@ -28,4 +28,7 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum FileShares { Table, PasswordHash }
+enum FileShares {
+    Table,
+    PasswordHash,
+}

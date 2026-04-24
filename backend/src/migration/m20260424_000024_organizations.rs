@@ -28,7 +28,12 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Memberships::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(Memberships::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(Memberships::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(Memberships::OrgId).uuid().not_null())
                     .col(ColumnDef::new(Memberships::UserId).uuid().not_null())
                     .col(ColumnDef::new(Memberships::Role).string().not_null())
@@ -78,10 +83,26 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum Users { Table, Id }
+enum Users {
+    Table,
+    Id,
+}
 
 #[derive(Iden)]
-enum Orgs { Table, Id, Name, Slug, CreatedAt }
+enum Orgs {
+    Table,
+    Id,
+    Name,
+    Slug,
+    CreatedAt,
+}
 
 #[derive(Iden)]
-enum Memberships { Table, Id, OrgId, UserId, Role, CreatedAt }
+enum Memberships {
+    Table,
+    Id,
+    OrgId,
+    UserId,
+    Role,
+    CreatedAt,
+}

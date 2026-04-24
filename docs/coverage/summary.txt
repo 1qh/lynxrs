@@ -1,0 +1,12 @@
+Baseline from `cargo llvm-cov --release --tests --summary-only` (integration + property tests only).
+
+TOTAL: 7785 regions, 6767 missed → 13.08% region coverage
+       4527 lines, 3883 missed → 14.23% line coverage
+        536 functions, 453 missed → 15.49% fn coverage
+
+Well-covered: auth.rs 43.55%, api.rs 33.61%, mailer.rs 37.32%, audit.rs 26.83%, error.rs 73.68%.
+Zero: files.rs, orgs.rs, tokens.rs, webhooks.rs, mfa.rs, oauth.rs (5%), admin.rs, housekeeping.rs.
+These exercised only by Playwright e2e → not counted (process-level).
+
+True coverage requires running the backend binary under llvm-cov instrumentation
+while Playwright e2e hits it. Tracked as follow-up.

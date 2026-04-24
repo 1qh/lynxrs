@@ -29,10 +29,7 @@ struct App {
 }
 
 async fn spawn_app() -> App {
-    let pg = Postgres::default()
-        .start()
-        .await
-        .expect("start postgres");
+    let pg = Postgres::default().start().await.expect("start postgres");
     let pg_host = pg.get_host().await.expect("pg host");
     let pg_port = pg.get_host_port_ipv4(5432).await.expect("pg port");
     let database_url = format!("postgres://postgres:postgres@{pg_host}:{pg_port}/postgres");
@@ -213,7 +210,10 @@ async fn logout_all_bumps_session_version_invalidating_old_cookies() {
         .unwrap();
 
     // login on a fresh client B (simulating a second device)
-    let b = reqwest::Client::builder().cookie_store(true).build().unwrap();
+    let b = reqwest::Client::builder()
+        .cookie_store(true)
+        .build()
+        .unwrap();
     let res = b
         .post(format!("{}/api/auth/login", app.base))
         .json(&serde_json::json!({ "email": email, "password": "hunter2hunter2" }))
@@ -269,7 +269,10 @@ async fn delete_me_removes_account_and_revokes_login() {
         .unwrap();
     assert_eq!(del.status(), StatusCode::NO_CONTENT);
 
-    let fresh = reqwest::Client::builder().cookie_store(true).build().unwrap();
+    let fresh = reqwest::Client::builder()
+        .cookie_store(true)
+        .build()
+        .unwrap();
     let login = fresh
         .post(format!("{}/api/auth/login", app.base))
         .json(&serde_json::json!({ "email": email, "password": "hunter2hunter2" }))
@@ -316,7 +319,10 @@ async fn change_password_rotates_hash_and_invalidates_old() {
     assert_eq!(r.status(), StatusCode::NO_CONTENT);
 
     // Old password → 401
-    let fresh = reqwest::Client::builder().cookie_store(true).build().unwrap();
+    let fresh = reqwest::Client::builder()
+        .cookie_store(true)
+        .build()
+        .unwrap();
     let old = fresh
         .post(format!("{}/api/auth/login", app.base))
         .json(&serde_json::json!({ "email": email, "password": "hunter2hunter2" }))

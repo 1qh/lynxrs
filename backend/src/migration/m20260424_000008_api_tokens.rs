@@ -11,7 +11,12 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(ApiTokens::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(ApiTokens::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(ApiTokens::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(ApiTokens::UserId).uuid().not_null())
                     .col(ColumnDef::new(ApiTokens::Name).string().not_null())
                     .col(
@@ -20,14 +25,22 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .unique_key(),
                     )
-                    .col(ColumnDef::new(ApiTokens::LastUsedAt).timestamp_with_time_zone().null())
+                    .col(
+                        ColumnDef::new(ApiTokens::LastUsedAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
                     .col(
                         ColumnDef::new(ApiTokens::CreatedAt)
                             .timestamp_with_time_zone()
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
-                    .col(ColumnDef::new(ApiTokens::RevokedAt).timestamp_with_time_zone().null())
+                    .col(
+                        ColumnDef::new(ApiTokens::RevokedAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_api_tokens_user")

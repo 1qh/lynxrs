@@ -1,6 +1,11 @@
 //! API token management — `/api/tokens` CRUD.
 
-use axum::{Json, extract::{Path, State}, http::StatusCode, response::IntoResponse};
+use axum::{
+    Json,
+    extract::{Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+};
 use axum_extra::extract::PrivateCookieJar;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use serde::{Deserialize, Serialize};
@@ -10,7 +15,6 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-
     entity::api_token,
     error::{AppError, Result},
     state::AppState,
@@ -54,7 +58,9 @@ pub struct CreateTokenInput {
     pub scope: String,
 }
 
-fn default_scope() -> String { "full".into() }
+fn default_scope() -> String {
+    "full".into()
+}
 
 fn sha256_hex(value: &str) -> String {
     let digest = Sha256::digest(value.as_bytes());

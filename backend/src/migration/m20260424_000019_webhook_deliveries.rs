@@ -11,13 +11,34 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(WebhookDeliveries::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(WebhookDeliveries::Id).uuid().not_null().primary_key())
-                    .col(ColumnDef::new(WebhookDeliveries::WebhookId).uuid().not_null())
-                    .col(ColumnDef::new(WebhookDeliveries::Attempt).integer().not_null())
+                    .col(
+                        ColumnDef::new(WebhookDeliveries::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(WebhookDeliveries::WebhookId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(WebhookDeliveries::Attempt)
+                            .integer()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(WebhookDeliveries::Status).integer().null())
-                    .col(ColumnDef::new(WebhookDeliveries::DurationMs).integer().null())
+                    .col(
+                        ColumnDef::new(WebhookDeliveries::DurationMs)
+                            .integer()
+                            .null(),
+                    )
                     .col(ColumnDef::new(WebhookDeliveries::Error).string().null())
-                    .col(ColumnDef::new(WebhookDeliveries::EventKind).string().not_null())
+                    .col(
+                        ColumnDef::new(WebhookDeliveries::EventKind)
+                            .string()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(WebhookDeliveries::CreatedAt)
                             .timestamp_with_time_zone()
@@ -53,9 +74,20 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum Webhooks { Table, Id }
+enum Webhooks {
+    Table,
+    Id,
+}
 
 #[derive(Iden)]
 enum WebhookDeliveries {
-    Table, Id, WebhookId, Attempt, Status, DurationMs, Error, EventKind, CreatedAt,
+    Table,
+    Id,
+    WebhookId,
+    Attempt,
+    Status,
+    DurationMs,
+    Error,
+    EventKind,
+    CreatedAt,
 }

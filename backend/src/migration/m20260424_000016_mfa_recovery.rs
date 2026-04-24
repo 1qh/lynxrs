@@ -11,10 +11,24 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(MfaRecovery::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(MfaRecovery::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(MfaRecovery::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(MfaRecovery::UserId).uuid().not_null())
-                    .col(ColumnDef::new(MfaRecovery::CodeHash).string().not_null().unique_key())
-                    .col(ColumnDef::new(MfaRecovery::UsedAt).timestamp_with_time_zone().null())
+                    .col(
+                        ColumnDef::new(MfaRecovery::CodeHash)
+                            .string()
+                            .not_null()
+                            .unique_key(),
+                    )
+                    .col(
+                        ColumnDef::new(MfaRecovery::UsedAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
                     .col(
                         ColumnDef::new(MfaRecovery::CreatedAt)
                             .timestamp_with_time_zone()
@@ -49,7 +63,17 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum Users { Table, Id }
+enum Users {
+    Table,
+    Id,
+}
 
 #[derive(Iden)]
-enum MfaRecovery { Table, Id, UserId, CodeHash, UsedAt, CreatedAt }
+enum MfaRecovery {
+    Table,
+    Id,
+    UserId,
+    CodeHash,
+    UsedAt,
+    CreatedAt,
+}

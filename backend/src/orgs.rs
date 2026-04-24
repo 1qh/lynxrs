@@ -1,4 +1,8 @@
-use axum::{Json, extract::{Path, State}, http::{HeaderMap, StatusCode}};
+use axum::{
+    Json,
+    extract::{Path, State},
+    http::{HeaderMap, StatusCode},
+};
 use axum_extra::extract::PrivateCookieJar;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use serde::{Deserialize, Serialize};
@@ -23,7 +27,12 @@ pub struct OrgDto {
 
 impl From<org::Model> for OrgDto {
     fn from(m: org::Model) -> Self {
-        Self { id: m.id, name: m.name, slug: m.slug, created_at: m.created_at }
+        Self {
+            id: m.id,
+            name: m.name,
+            slug: m.slug,
+            created_at: m.created_at,
+        }
     }
 }
 
@@ -47,9 +56,16 @@ pub async fn create_org(
     jar: PrivateCookieJar,
     Json(input): Json<CreateOrgInput>,
 ) -> Result<(StatusCode, Json<OrgDto>)> {
-    input.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
+    input
+        .validate()
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
-    if org::Entity::find().filter(org::Column::Slug.eq(&input.slug)).one(&state.db).await?.is_some() {
+    if org::Entity::find()
+        .filter(org::Column::Slug.eq(&input.slug))
+        .one(&state.db)
+        .await?
+        .is_some()
+    {
         return Err(AppError::Conflict("slug already taken".into()));
     }
     let org_id = Uuid::now_v7();
@@ -59,14 +75,18 @@ pub async fn create_org(
         name: Set(input.name),
         slug: Set(input.slug),
         created_at: Set(now),
-    }.insert(&state.db).await?;
+    }
+    .insert(&state.db)
+    .await?;
     membership::ActiveModel {
         id: Set(Uuid::now_v7()),
         org_id: Set(org_id),
         user_id: Set(uid),
         role: Set("owner".into()),
         created_at: Set(now),
-    }.insert(&state.db).await?;
+    }
+    .insert(&state.db)
+    .await?;
     Ok((StatusCode::CREATED, Json(OrgDto::from(m))))
 }
 
@@ -81,7 +101,9 @@ pub async fn list_orgs(
         .filter(membership::Column::UserId.eq(uid))
         .all(&state.db)
         .await?;
-    if mbrs.is_empty() { return Ok(Json(vec![])); }
+    if mbrs.is_empty() {
+        return Ok(Json(vec![]));
+    }
     let ids: Vec<Uuid> = mbrs.iter().map(|m| m.org_id).collect();
     let orgs = org::Entity::find()
         .filter(org::Column::Id.is_in(ids))
@@ -99,11 +121,16 @@ pub struct MemberDto {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-async fn require_member(db: &sea_orm::DatabaseConnection, org_id: Uuid, uid: Uuid) -> Result<membership::Model> {
+async fn require_member(
+    db: &sea_orm::DatabaseConnection,
+    org_id: Uuid,
+    uid: Uuid,
+) -> Result<membership::Model> {
     membership::Entity::find()
         .filter(membership::Column::OrgId.eq(org_id))
         .filter(membership::Column::UserId.eq(uid))
-        .one(db).await?
+        .one(db)
+        .await?
         .ok_or(AppError::NotFound)
 }
 
@@ -119,18 +146,25 @@ pub async fn list_members(
     let _ = require_member(&state.db, id, uid).await?;
     let mbrs = membership::Entity::find()
         .filter(membership::Column::OrgId.eq(id))
-        .all(&state.db).await?;
+        .all(&state.db)
+        .await?;
     let user_ids: Vec<Uuid> = mbrs.iter().map(|m| m.user_id).collect();
     let users = user::Entity::find()
         .filter(user::Column::Id.is_in(user_ids))
-        .all(&state.db).await?;
-    let by_id: std::collections::HashMap<Uuid, String> = users.into_iter().map(|u| (u.id, u.email)).collect();
-    Ok(Json(mbrs.into_iter().map(|m| MemberDto {
-        user_id: m.user_id,
-        email: by_id.get(&m.user_id).cloned().unwrap_or_default(),
-        role: m.role,
-        created_at: m.created_at,
-    }).collect()))
+        .all(&state.db)
+        .await?;
+    let by_id: std::collections::HashMap<Uuid, String> =
+        users.into_iter().map(|u| (u.id, u.email)).collect();
+    Ok(Json(
+        mbrs.into_iter()
+            .map(|m| MemberDto {
+                user_id: m.user_id,
+                email: by_id.get(&m.user_id).cloned().unwrap_or_default(),
+                role: m.role,
+                created_at: m.created_at,
+            })
+            .collect(),
+    ))
 }
 
 #[derive(Deserialize, ToSchema, Validate)]
@@ -140,7 +174,9 @@ pub struct AddMemberInput {
     #[serde(default = "default_member_role")]
     pub role: String,
 }
-fn default_member_role() -> String { "member".into() }
+fn default_member_role() -> String {
+    "member".into()
+}
 
 #[utoipa::path(post, path = "/orgs/{id}/members", request_body = AddMemberInput,
     responses((status = 201, body = MemberDto), (status = 404), (status = 409)))]
@@ -151,7 +187,9 @@ pub async fn add_member(
     Path(id): Path<Uuid>,
     Json(input): Json<AddMemberInput>,
 ) -> Result<(StatusCode, Json<MemberDto>)> {
-    input.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
+    input
+        .validate()
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let caller = require_member(&state.db, id, uid).await?;
     if !matches!(caller.role.as_str(), "owner" | "admin") {
@@ -159,17 +197,23 @@ pub async fn add_member(
     }
     let role = match input.role.as_str() {
         "owner" | "admin" | "member" => input.role,
-        _ => return Err(AppError::BadRequest("role must be owner|admin|member".into())),
+        _ => {
+            return Err(AppError::BadRequest(
+                "role must be owner|admin|member".into(),
+            ));
+        }
     };
     let email = input.email.trim().to_lowercase();
     let target = user::Entity::find()
         .filter(user::Column::Email.eq(&email))
-        .one(&state.db).await?
+        .one(&state.db)
+        .await?
         .ok_or_else(|| AppError::NotFound)?;
     if membership::Entity::find()
         .filter(membership::Column::OrgId.eq(id))
         .filter(membership::Column::UserId.eq(target.id))
-        .one(&state.db).await?
+        .one(&state.db)
+        .await?
         .is_some()
     {
         return Err(AppError::Conflict("already a member".into()));
@@ -180,10 +224,18 @@ pub async fn add_member(
         user_id: Set(target.id),
         role: Set(role.clone()),
         created_at: Set(chrono::Utc::now()),
-    }.insert(&state.db).await?;
-    Ok((StatusCode::CREATED, Json(MemberDto {
-        user_id: m.user_id, email, role: m.role, created_at: m.created_at,
-    })))
+    }
+    .insert(&state.db)
+    .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(MemberDto {
+            user_id: m.user_id,
+            email,
+            role: m.role,
+            created_at: m.created_at,
+        }),
+    ))
 }
 
 #[derive(Deserialize, ToSchema, Validate)]
@@ -221,7 +273,9 @@ pub async fn create_invite(
     Path(id): Path<Uuid>,
     Json(input): Json<InviteInput>,
 ) -> Result<(StatusCode, Json<InviteCreated>)> {
-    input.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
+    input
+        .validate()
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let caller = require_member(&state.db, id, uid).await?;
     if !matches!(caller.role.as_str(), "owner" | "admin") {
@@ -229,7 +283,11 @@ pub async fn create_invite(
     }
     let role = match input.role.as_str() {
         "owner" | "admin" | "member" => input.role,
-        _ => return Err(AppError::BadRequest("role must be owner|admin|member".into())),
+        _ => {
+            return Err(AppError::BadRequest(
+                "role must be owner|admin|member".into(),
+            ));
+        }
     };
     let raw = random_invite_token();
     let token_hash = sha256_hex(&raw);
@@ -242,7 +300,9 @@ pub async fn create_invite(
         expires_at: Set(chrono::Utc::now() + chrono::Duration::days(14)),
         accepted_at: Set(None),
         created_at: Set(chrono::Utc::now()),
-    }.insert(&state.db).await?;
+    }
+    .insert(&state.db)
+    .await?;
     let url = format!(
         "{}/invite?token={raw}",
         state.public_base_url.trim_end_matches('/')
@@ -253,8 +313,13 @@ pub async fn create_invite(
         let to = m.email.clone();
         let url_c = url.clone();
         tokio::spawn(async move {
-            let body = format!("You've been invited to join a simu organization.\n\n  Accept: {url_c}\n\n(This link expires in 14 days.)");
-            if let Err(e) = mailer.send_share_link(&to, &url_c, "simu organization invite").await {
+            let body = format!(
+                "You've been invited to join a simu organization.\n\n  Accept: {url_c}\n\n(This link expires in 14 days.)"
+            );
+            if let Err(e) = mailer
+                .send_share_link(&to, &url_c, "simu organization invite")
+                .await
+            {
                 tracing::warn!(error=%e, "invite email failed");
             }
             let _ = body;
@@ -281,15 +346,21 @@ pub async fn preview_invite(
     let inv = org_invite::Entity::find()
         .filter(org_invite::Column::TokenHash.eq(hash))
         .filter(org_invite::Column::AcceptedAt.is_null())
-        .one(&state.db).await?
+        .one(&state.db)
+        .await?
         .ok_or(AppError::NotFound)?;
     if inv.expires_at < chrono::Utc::now() {
         return Err(AppError::BadRequest("invite expired".into()));
     }
-    let o = org::Entity::find_by_id(inv.org_id).one(&state.db).await?
+    let o = org::Entity::find_by_id(inv.org_id)
+        .one(&state.db)
+        .await?
         .ok_or(AppError::NotFound)?;
     Ok(Json(InvitePreview {
-        org: OrgDto::from(o), email: inv.email, role: inv.role, expires_at: inv.expires_at,
+        org: OrgDto::from(o),
+        email: inv.email,
+        role: inv.role,
+        expires_at: inv.expires_at,
     }))
 }
 
@@ -306,19 +377,24 @@ pub async fn accept_invite(
     let inv = org_invite::Entity::find()
         .filter(org_invite::Column::TokenHash.eq(hash))
         .filter(org_invite::Column::AcceptedAt.is_null())
-        .one(&state.db).await?
+        .one(&state.db)
+        .await?
         .ok_or(AppError::NotFound)?;
     if inv.expires_at < chrono::Utc::now() {
         return Err(AppError::BadRequest("invite expired".into()));
     }
-    let u = user::Entity::find_by_id(uid).one(&state.db).await?.ok_or(AppError::Unauthorized)?;
+    let u = user::Entity::find_by_id(uid)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
     if u.email.to_lowercase() != inv.email {
         return Err(AppError::BadRequest("invite email mismatch".into()));
     }
     if membership::Entity::find()
         .filter(membership::Column::OrgId.eq(inv.org_id))
         .filter(membership::Column::UserId.eq(uid))
-        .one(&state.db).await?
+        .one(&state.db)
+        .await?
         .is_some()
     {
         return Err(AppError::Conflict("already a member".into()));
@@ -329,11 +405,18 @@ pub async fn accept_invite(
         user_id: Set(uid),
         role: Set(inv.role.clone()),
         created_at: Set(chrono::Utc::now()),
-    }.insert(&state.db).await?;
+    }
+    .insert(&state.db)
+    .await?;
     let mut am: org_invite::ActiveModel = inv.into();
     am.accepted_at = Set(Some(chrono::Utc::now()));
     am.update(&state.db).await?;
-    Ok(Json(MemberDto { user_id: m.user_id, email: u.email, role: m.role, created_at: m.created_at }))
+    Ok(Json(MemberDto {
+        user_id: m.user_id,
+        email: u.email,
+        role: m.role,
+        created_at: m.created_at,
+    }))
 }
 
 #[derive(Serialize, ToSchema)]
@@ -358,11 +441,13 @@ pub async fn org_stats(
     let _ = require_member(&state.db, id, uid).await?;
     let members = membership::Entity::find()
         .filter(membership::Column::OrgId.eq(id))
-        .count(&state.db).await?;
+        .count(&state.db)
+        .await?;
     let files = file_object::Entity::find()
         .filter(file_object::Column::OrgId.eq(id))
         .filter(file_object::Column::DeletedAt.is_null())
-        .count(&state.db).await?;
+        .count(&state.db)
+        .await?;
     let sizes: Vec<i64> = file_object::Entity::find()
         .filter(file_object::Column::OrgId.eq(id))
         .filter(file_object::Column::DeletedAt.is_null())
@@ -372,7 +457,11 @@ pub async fn org_stats(
         .all(&state.db)
         .await?;
     let total_bytes: i64 = sizes.iter().sum();
-    Ok(Json(OrgStatsDto { members, files, total_bytes }))
+    Ok(Json(OrgStatsDto {
+        members,
+        files,
+        total_bytes,
+    }))
 }
 
 #[utoipa::path(delete, path = "/orgs/{id}/members/{user_id}",
@@ -389,6 +478,8 @@ pub async fn remove_member(
         return Err(AppError::Unauthorized);
     }
     let m = require_member(&state.db, id, target_user).await?;
-    membership::Entity::delete_by_id(m.id).exec(&state.db).await?;
+    membership::Entity::delete_by_id(m.id)
+        .exec(&state.db)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }

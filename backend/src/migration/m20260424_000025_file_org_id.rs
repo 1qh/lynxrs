@@ -46,6 +46,12 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum Orgs { Table, Id }
+enum Orgs {
+    Table,
+    Id,
+}
 #[derive(Iden)]
-enum FileObjects { Table, OrgId }
+enum FileObjects {
+    Table,
+    OrgId,
+}

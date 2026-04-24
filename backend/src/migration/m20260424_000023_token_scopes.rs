@@ -33,4 +33,7 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum ApiTokens { Table, Scope }
+enum ApiTokens {
+    Table,
+    Scope,
+}

@@ -53,10 +53,13 @@ async fn inject_request_id_into_errors(
     };
     let mut val: serde_json::Value = match serde_json::from_slice(&bytes) {
         Ok(v) => v,
-        Err(_) => return axum::response::Response::from_parts(parts, axum::body::Body::from(bytes)),
+        Err(_) => {
+            return axum::response::Response::from_parts(parts, axum::body::Body::from(bytes));
+        }
     };
     if let (Some(obj), Some(id)) = (val.as_object_mut(), req_id) {
-        obj.entry("request_id").or_insert(serde_json::Value::String(id));
+        obj.entry("request_id")
+            .or_insert(serde_json::Value::String(id));
     }
     let new_body = serde_json::to_vec(&val).unwrap_or_else(|_| bytes.to_vec());
     axum::response::Response::from_parts(parts, axum::body::Body::from(new_body))
@@ -94,7 +97,10 @@ use tracing::Level;
 use utoipa::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::{admin, audit, auth, error::ErrorBody, events, files, mfa, oauth, orgs, state::AppState, tokens, webhooks};
+use crate::{
+    admin, audit, auth, error::ErrorBody, events, files, mfa, oauth, orgs, state::AppState, tokens,
+    webhooks,
+};
 
 const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
 
@@ -273,13 +279,19 @@ async fn ready(
             .and_then(|v| v.parse().ok())
             .unwrap_or(25);
         let probe = async {
-            let mut s = tokio::net::TcpStream::connect((host.as_str(), port)).await.ok()?;
+            let mut s = tokio::net::TcpStream::connect((host.as_str(), port))
+                .await
+                .ok()?;
             let mut buf = [0u8; 256];
             let n = s.read(&mut buf).await.ok()?;
-            if !buf[..n].starts_with(b"220") { return None; }
+            if !buf[..n].starts_with(b"220") {
+                return None;
+            }
             s.write_all(b"EHLO simu.local\r\n").await.ok()?;
             let n = s.read(&mut buf).await.ok()?;
-            if !buf[..n].starts_with(b"250") { return None; }
+            if !buf[..n].starts_with(b"250") {
+                return None;
+            }
             let _ = s.write_all(b"QUIT\r\n").await;
             Some(())
         };
@@ -366,6 +378,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(tokens::revoke_token))
         .routes(routes!(audit::list_mine))
         .routes(routes!(audit::list_sessions))
+        .routes(routes!(audit::verify_chain))
         .routes(routes!(orgs::create_org, orgs::list_orgs))
         .routes(routes!(orgs::list_members, orgs::add_member))
         .routes(routes!(orgs::remove_member))
@@ -430,10 +443,16 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
             .nest("/api", api_router)
             .nest("/api", oauth::router().with_state(state.clone()))
             .merge(events::router().with_state(state))
-            .layer(axum::middleware::from_fn_with_state(rate_state, auth::per_user_rate_limit))
+            .layer(axum::middleware::from_fn_with_state(
+                rate_state,
+                auth::per_user_rate_limit,
+            ))
             .layer(axum::middleware::from_fn(inject_request_id_into_errors))
             .layer(axum::middleware::from_fn(auth::csrf_enforce))
-            .layer(axum::middleware::from_fn_with_state(scope_state, auth::token_scope_enforce))
+            .layer(axum::middleware::from_fn_with_state(
+                scope_state,
+                auth::token_scope_enforce,
+            ))
             .layer(GovernorLayer::new(governor_conf).error_handler(|err| {
                 use axum::response::IntoResponse;
                 let (status, code) = match err {

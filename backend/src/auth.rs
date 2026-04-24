@@ -87,12 +87,21 @@ pub async fn update_me(
     jar: PrivateCookieJar,
     Json(input): Json<ProfileInput>,
 ) -> Result<Json<UserDto>> {
-    input.validate().map_err(|e| AppError::Validation(e.to_string()))?;
+    input
+        .validate()
+        .map_err(|e| AppError::Validation(e.to_string()))?;
     let uid = authenticate(&state, &headers, &jar).await?;
-    let u = user::Entity::find_by_id(uid).one(&state.db).await?.ok_or(AppError::Unauthorized)?;
+    let u = user::Entity::find_by_id(uid)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
     let mut am: user::ActiveModel = u.into();
-    if let Some(dn) = input.display_name { am.display_name = Set(Some(dn)); }
-    if let Some(av) = input.avatar_url { am.avatar_url = Set(Some(av)); }
+    if let Some(dn) = input.display_name {
+        am.display_name = Set(Some(dn));
+    }
+    if let Some(av) = input.avatar_url {
+        am.avatar_url = Set(Some(av));
+    }
     am.updated_at = Set(chrono::Utc::now());
     let updated = am.update(&state.db).await?;
     Ok(Json(UserDto::from(updated)))
@@ -199,13 +208,23 @@ pub async fn signup(
         tracing::warn!(error=%e, "verification email enqueue failed");
     }
 
-    crate::audit::record(&state.db, Some(u.id), "signup", Some(&headers), serde_json::json!({})).await;
+    crate::audit::record(
+        &state.db,
+        Some(u.id),
+        "signup",
+        Some(&headers),
+        serde_json::json!({}),
+    )
+    .await;
     let (csrf, csrf_c) = issue_csrf_pair();
     let jar = jar.add(issue_cookie(u.id, u.session_version));
     let mut dto = UserDto::from(u);
     dto.csrf_token = Some(csrf);
     let mut resp = (StatusCode::CREATED, jar, Json(dto)).into_response();
-    resp.headers_mut().append(axum::http::header::SET_COOKIE, csrf_set_cookie_header(&csrf_c));
+    resp.headers_mut().append(
+        axum::http::header::SET_COOKIE,
+        csrf_set_cookie_header(&csrf_c),
+    );
     Ok(resp)
 }
 
@@ -267,7 +286,7 @@ pub async fn verify_email(
     if row.used_at.is_some() {
         return Err(AppError::BadRequest("token already used".into()));
     }
-    if row.expires_at < chrono::Utc::now() {
+    if row.expires_at == /* ~ changed by cargo-mutants ~ */ chrono::Utc::now() {
         return Err(AppError::BadRequest("token expired".into()));
     }
 
@@ -331,7 +350,14 @@ pub async fn login(
     {
         Some(u) => u,
         None => {
-            crate::audit::record(&state.db, None, "login_failed", Some(&headers), serde_json::json!({"email": email})).await;
+            crate::audit::record(
+                &state.db,
+                None,
+                "login_failed",
+                Some(&headers),
+                serde_json::json!({"email": email}),
+            )
+            .await;
             return Err(AppError::Unauthorized);
         }
     };
@@ -339,7 +365,14 @@ pub async fn login(
     if let Some(until) = u.locked_until
         && until > chrono::Utc::now()
     {
-        crate::audit::record(&state.db, Some(u.id), "login_locked", Some(&headers), serde_json::json!({"until": until})).await;
+        crate::audit::record(
+            &state.db,
+            Some(u.id),
+            "login_locked",
+            Some(&headers),
+            serde_json::json!({"until": until}),
+        )
+        .await;
         return Err(AppError::Unauthorized);
     }
 
@@ -372,9 +405,20 @@ pub async fn login(
         am.locked_until = Set(lock);
         am.updated_at = Set(chrono::Utc::now());
         let _ = am.update(&state.db).await;
-        let action = if !password_ok { "login_failed" } else { "login_failed_mfa" };
+        let action = if !password_ok {
+            "login_failed"
+        } else {
+            "login_failed_mfa"
+        };
         metrics::counter!("simu_login_failed_total", "reason" => action).increment(1);
-        crate::audit::record(&state.db, Some(uid_for_audit), action, Some(&headers), serde_json::json!({"count": new_count})).await;
+        crate::audit::record(
+            &state.db,
+            Some(uid_for_audit),
+            action,
+            Some(&headers),
+            serde_json::json!({"count": new_count}),
+        )
+        .await;
         return Err(AppError::Unauthorized);
     }
 
@@ -387,17 +431,34 @@ pub async fn login(
         am.locked_until = Set(None);
         am.updated_at = Set(chrono::Utc::now());
         let _ = am.update(&state.db).await;
-        crate::audit::record(&state.db, Some(uid_copy), "login", Some(&headers), serde_json::json!({})).await;
+        crate::audit::record(
+            &state.db,
+            Some(uid_copy),
+            "login",
+            Some(&headers),
+            serde_json::json!({}),
+        )
+        .await;
         let (csrf, csrf_c) = issue_csrf_pair();
         let jar = jar.add(issue_cookie(uid_copy, sv));
         let mut dto = UserDto::from(u);
         dto.csrf_token = Some(csrf);
         let mut resp = (jar, Json(dto)).into_response();
-        resp.headers_mut().append(axum::http::header::SET_COOKIE, csrf_set_cookie_header(&csrf_c));
+        resp.headers_mut().append(
+            axum::http::header::SET_COOKIE,
+            csrf_set_cookie_header(&csrf_c),
+        );
         return Ok(resp);
     }
 
-    crate::audit::record(&state.db, Some(u.id), "login", Some(&headers), serde_json::json!({})).await;
+    crate::audit::record(
+        &state.db,
+        Some(u.id),
+        "login",
+        Some(&headers),
+        serde_json::json!({}),
+    )
+    .await;
     metrics::counter!("simu_login_success_total").increment(1);
     maybe_notify_new_ip(&state, &u, &headers).await;
     let (csrf, csrf_c) = issue_csrf_pair();
@@ -405,7 +466,10 @@ pub async fn login(
     let mut dto = UserDto::from(u);
     dto.csrf_token = Some(csrf);
     let mut resp = (jar, Json(dto)).into_response();
-    resp.headers_mut().append(axum::http::header::SET_COOKIE, csrf_set_cookie_header(&csrf_c));
+    resp.headers_mut().append(
+        axum::http::header::SET_COOKIE,
+        csrf_set_cookie_header(&csrf_c),
+    );
     Ok(resp)
 }
 
@@ -466,7 +530,10 @@ pub async fn me(
     let mut dto = UserDto::from(u);
     dto.csrf_token = Some(csrf);
     let mut resp = Json(dto).into_response();
-    resp.headers_mut().append(axum::http::header::SET_COOKIE, csrf_set_cookie_header(&csrf_c));
+    resp.headers_mut().append(
+        axum::http::header::SET_COOKIE,
+        csrf_set_cookie_header(&csrf_c),
+    );
     Ok(resp)
 }
 
@@ -478,7 +545,14 @@ pub async fn delete_me(
 ) -> Result<impl IntoResponse> {
     let uid = authenticate(&state, &headers, &jar).await?;
     // CASCADE FKs drop file_objects, password_resets, email_verifications.
-    crate::audit::record(&state.db, Some(uid), "delete_account", Some(&headers), serde_json::json!({})).await;
+    crate::audit::record(
+        &state.db,
+        Some(uid),
+        "delete_account",
+        Some(&headers),
+        serde_json::json!({}),
+    )
+    .await;
     user::Entity::delete_by_id(uid).exec(&state.db).await?;
     let jar = jar.remove(Cookie::build(SESSION_COOKIE).path("/").build());
     Ok((StatusCode::NO_CONTENT, jar))
@@ -526,9 +600,18 @@ pub async fn change_password(
     active.updated_at = Set(chrono::Utc::now());
     active.update(&state.db).await?;
 
-    crate::audit::record(&state.db, Some(uid), "password_change", Some(&headers), serde_json::json!({})).await;
+    crate::audit::record(
+        &state.db,
+        Some(uid),
+        "password_change",
+        Some(&headers),
+        serde_json::json!({}),
+    )
+    .await;
     // Refresh cookie with bumped version — old cookies instantly invalid.
-    let jar = jar.add(issue_cookie(uid, new_version)).add(issue_csrf_cookie());
+    let jar = jar
+        .add(issue_cookie(uid, new_version))
+        .add(issue_csrf_cookie());
     Ok((StatusCode::NO_CONTENT, jar))
 }
 
@@ -547,7 +630,14 @@ pub async fn logout_all(
     am.session_version = Set(am.session_version.unwrap() + 1);
     am.updated_at = Set(chrono::Utc::now());
     am.update(&state.db).await?;
-    crate::audit::record(&state.db, Some(uid), "logout_all", Some(&headers), serde_json::json!({})).await;
+    crate::audit::record(
+        &state.db,
+        Some(uid),
+        "logout_all",
+        Some(&headers),
+        serde_json::json!({}),
+    )
+    .await;
     let jar = jar.remove(Cookie::build(SESSION_COOKIE).path("/").build());
     Ok((StatusCode::NO_CONTENT, jar))
 }
@@ -711,10 +801,17 @@ pub struct RateState {
     pub cookie_key: axum_extra::extract::cookie::Key,
 }
 
-pub fn build_rate_state(db: sea_orm::DatabaseConnection, cookie_key: axum_extra::extract::cookie::Key) -> RateState {
+pub fn build_rate_state(
+    db: sea_orm::DatabaseConnection,
+    cookie_key: axum_extra::extract::cookie::Key,
+) -> RateState {
     let per_sec = std::num::NonZeroU32::new(
-        std::env::var("PER_USER_RPS").ok().and_then(|v| v.parse().ok()).unwrap_or(50),
-    ).unwrap();
+        std::env::var("PER_USER_RPS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(50),
+    )
+    .unwrap();
     let quota = governor::Quota::per_second(per_sec);
     RateState {
         limiter: std::sync::Arc::new(governor::RateLimiter::dashmap(quota)),
@@ -771,8 +868,7 @@ pub async fn per_user_rate_limit(
                 axum_extra::extract::PrivateCookieJar::from_headers(&hdrs, rs.cookie_key.clone());
             jar.get("simu_session").and_then(|c| {
                 let v = c.value().to_string();
-                v.split_once(':')
-                    .and_then(|(u, _)| Uuid::parse_str(u).ok())
+                v.split_once(':').and_then(|(u, _)| Uuid::parse_str(u).ok())
             })
         } else if let Some(tok) = raw_bearer.as_ref() {
             use crate::entity::api_token;
@@ -978,6 +1074,8 @@ pub async fn reset_password(
     used.used_at = Set(Some(chrono::Utc::now()));
     used.update(&state.db).await?;
 
-    let jar = jar.add(issue_cookie(user_id, new_version)).add(issue_csrf_cookie());
+    let jar = jar
+        .add(issue_cookie(user_id, new_version))
+        .add(issue_csrf_cookie());
     Ok((StatusCode::NO_CONTENT, jar))
 }

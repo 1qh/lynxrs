@@ -12,6 +12,8 @@ pub struct Model {
     pub user_agent: Option<String>,
     pub meta: serde_json::Value,
     pub created_at: ChronoDateTimeUtc,
+    pub prev_hash: Option<String>,
+    pub row_hash: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

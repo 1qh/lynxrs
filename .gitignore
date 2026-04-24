@@ -32,3 +32,5 @@ tooling/*.tar.gz
 
 # macOS
 ._*
+backend/mutants.out/
+backend/mutants.out.old/

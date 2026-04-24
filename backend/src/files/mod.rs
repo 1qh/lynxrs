@@ -8,14 +8,16 @@ use axum_extra::extract::PrivateCookieJar;
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use bytes::Bytes;
 use object_store::{ObjectStoreExt, PutPayload, path::Path as ObjPath};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    entity::{file_comment, file_object, file_share, file_version},
+    entity::{file_comment, file_object, file_share},
     error::{AppError, Result},
     events::EventMsg,
     state::AppState,
@@ -51,26 +53,42 @@ impl From<file_object::Model> for FileDto {
     }
 }
 
-const MAX_FILE_BYTES: usize = 50 * 1024 * 1024; // 50 MB cap for spike
-const USER_QUOTA_BYTES: i64 = 500 * 1024 * 1024; // 500 MB per user
+pub(crate) const MAX_FILE_BYTES: usize = 50 * 1024 * 1024; // 50 MB cap for spike
+pub(crate) const USER_QUOTA_BYTES: i64 = 500 * 1024 * 1024; // 500 MB per user
 const ORG_QUOTA_BYTES: i64 = 5 * 1024 * 1024 * 1024; // 5 GB per org
 
 fn image_magic_ok(claimed: &str, data: &[u8]) -> bool {
-    if !claimed.starts_with("image/") { return true; }
-    if data.len() < 12 { return false; }
+    if !claimed.starts_with("image/") {
+        return true;
+    }
+    if data.len() < 12 {
+        return false;
+    }
     // PNG: 89 50 4E 47
-    if data.starts_with(b"\x89PNG") { return claimed.contains("png"); }
+    if data.starts_with(b"\x89PNG") {
+        return claimed.contains("png");
+    }
     // JPEG: FF D8 FF
-    if data.starts_with(b"\xff\xd8\xff") { return claimed.contains("jpeg") || claimed.contains("jpg"); }
+    if data.starts_with(b"\xff\xd8\xff") {
+        return claimed.contains("jpeg") || claimed.contains("jpg");
+    }
     // GIF: GIF87a / GIF89a
-    if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") { return claimed.contains("gif"); }
+    if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+        return claimed.contains("gif");
+    }
     // WebP: RIFF....WEBP
-    if &data[0..4] == b"RIFF" && &data[8..12] == b"WEBP" { return claimed.contains("webp"); }
+    if &data[0..4] == b"RIFF" && &data[8..12] == b"WEBP" {
+        return claimed.contains("webp");
+    }
     // AVIF/HEIC etc: ftypavif / ftypheic in bytes 4..12
     if data.len() >= 12 && &data[4..8] == b"ftyp" {
         let brand = &data[8..12];
-        if brand == b"avif" { return claimed.contains("avif"); }
-        if brand == b"heic" || brand == b"heif" { return claimed.contains("heic") || claimed.contains("heif"); }
+        if brand == b"avif" {
+            return claimed.contains("avif");
+        }
+        if brand == b"heic" || brand == b"heif" {
+            return claimed.contains("heic") || claimed.contains("heif");
+        }
     }
     false
 }
@@ -98,7 +116,7 @@ async fn enforce_org_quota(
     Ok(())
 }
 
-async fn user_org_ids(db: &sea_orm::DatabaseConnection, uid: Uuid) -> Result<Vec<Uuid>> {
+pub(crate) async fn user_org_ids(db: &sea_orm::DatabaseConnection, uid: Uuid) -> Result<Vec<Uuid>> {
     use crate::entity::membership;
     let mbrs = membership::Entity::find()
         .filter(membership::Column::UserId.eq(uid))
@@ -110,8 +128,14 @@ async fn user_org_ids(db: &sea_orm::DatabaseConnection, uid: Uuid) -> Result<Vec
     Ok(mbrs)
 }
 
-async fn can_access(db: &sea_orm::DatabaseConnection, uid: Uuid, file: &file_object::Model) -> Result<bool> {
-    if file.owner_id == uid { return Ok(true); }
+pub(crate) async fn can_access(
+    db: &sea_orm::DatabaseConnection,
+    uid: Uuid,
+    file: &file_object::Model,
+) -> Result<bool> {
+    if file.owner_id == uid {
+        return Ok(true);
+    }
     if let Some(org) = file.org_id {
         let ids = user_org_ids(db, uid).await?;
         return Ok(ids.contains(&org));
@@ -119,7 +143,7 @@ async fn can_access(db: &sea_orm::DatabaseConnection, uid: Uuid, file: &file_obj
     Ok(false)
 }
 
-async fn used_bytes(db: &sea_orm::DatabaseConnection, uid: Uuid) -> Result<i64> {
+pub(crate) async fn used_bytes(db: &sea_orm::DatabaseConnection, uid: Uuid) -> Result<i64> {
     let sizes: Vec<i64> = file_object::Entity::find()
         .filter(file_object::Column::OwnerId.eq(uid))
         .select_only()
@@ -130,7 +154,7 @@ async fn used_bytes(db: &sea_orm::DatabaseConnection, uid: Uuid) -> Result<i64> 
     Ok(sizes.iter().sum())
 }
 
-async fn enforce_quota(
+pub(crate) async fn enforce_quota(
     db: &sea_orm::DatabaseConnection,
     uid: Uuid,
     incoming: i64,
@@ -215,7 +239,11 @@ pub async fn verify(
     let bytes = result.bytes().await?;
     let computed = hex::encode(sha2::Sha256::digest(&bytes));
     let ok = row.sha256.as_deref() == Some(computed.as_str());
-    Ok(Json(VerifyDto { ok, stored: row.sha256, computed }))
+    Ok(Json(VerifyDto {
+        ok,
+        stored: row.sha256,
+        computed,
+    }))
 }
 
 #[utoipa::path(get, path = "/me/export", responses((status = 200)))]
@@ -227,23 +255,30 @@ pub async fn me_export(
     use axum::response::IntoResponse;
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let u = crate::entity::user::Entity::find_by_id(uid)
-        .one(&state.db).await?.ok_or(AppError::Unauthorized)?;
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
     let files = file_object::Entity::find()
         .filter(file_object::Column::OwnerId.eq(uid))
-        .all(&state.db).await?;
+        .all(&state.db)
+        .await?;
     let shares = file_share::Entity::find()
         .inner_join(file_object::Entity)
         .filter(file_object::Column::OwnerId.eq(uid))
-        .all(&state.db).await?;
+        .all(&state.db)
+        .await?;
     let tokens = crate::entity::api_token::Entity::find()
         .filter(crate::entity::api_token::Column::UserId.eq(uid))
-        .all(&state.db).await?;
+        .all(&state.db)
+        .await?;
     let webhooks = crate::entity::webhook::Entity::find()
         .filter(crate::entity::webhook::Column::UserId.eq(uid))
-        .all(&state.db).await?;
+        .all(&state.db)
+        .await?;
     let audit = crate::entity::audit_event::Entity::find()
         .filter(crate::entity::audit_event::Column::UserId.eq(uid))
-        .all(&state.db).await?;
+        .all(&state.db)
+        .await?;
     let export = serde_json::json!({
         "user": u,
         "files": files,
@@ -262,7 +297,8 @@ pub async fn me_export(
             ),
         ],
         serde_json::to_string_pretty(&export).unwrap_or_default(),
-    ).into_response())
+    )
+        .into_response())
 }
 
 #[derive(Serialize, ToSchema)]
@@ -318,7 +354,12 @@ pub async fn me_stats(
         .count(&state.db)
         .await?;
     Ok(Json(MeStatsDto {
-        files, trashed, total_bytes, shares, tokens, webhooks,
+        files,
+        trashed,
+        total_bytes,
+        shares,
+        tokens,
+        webhooks,
     }))
 }
 
@@ -360,10 +401,7 @@ pub async fn upload(
     let storage_key = format!("u/{uid}/{id}");
     let obj_path = ObjPath::from(storage_key.clone());
 
-    let mut upload = state
-        .storage
-        .put_multipart(&obj_path)
-        .await?;
+    let mut upload = state.storage.put_multipart(&obj_path).await?;
 
     const PART: usize = 8 * 1024 * 1024; // 8 MiB parts
     let mut buf: Vec<u8> = Vec::with_capacity(PART);
@@ -401,7 +439,9 @@ pub async fn upload(
     }
     // Flush tail
     if !buf.is_empty() {
-        upload.put_part(PutPayload::from_bytes(Bytes::from(buf))).await?;
+        upload
+            .put_part(PutPayload::from_bytes(Bytes::from(buf)))
+            .await?;
     }
     upload.complete().await?;
 
@@ -530,7 +570,10 @@ pub async fn delete(
     let mut am: file_object::ActiveModel = row.into();
     am.deleted_at = Set(Some(chrono::Utc::now()));
     am.update(&state.db).await?;
-    let _ = state.bus.send(EventMsg::FileDeleted { file_id: id, owner_id: uid });
+    let _ = state.bus.send(EventMsg::FileDeleted {
+        file_id: id,
+        owner_id: uid,
+    });
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -538,7 +581,13 @@ fn thumb_key(file_id: Uuid, uid: Uuid) -> String {
     format!("u/{uid}/thumb/{file_id}.jpg")
 }
 
-async fn maybe_store_thumbnail(state: &AppState, uid: Uuid, file_id: Uuid, content_type: &str, bytes: &[u8]) {
+async fn maybe_store_thumbnail(
+    state: &AppState,
+    uid: Uuid,
+    file_id: Uuid,
+    content_type: &str,
+    bytes: &[u8],
+) {
     if !content_type.starts_with("image/") {
         return;
     }
@@ -552,7 +601,10 @@ async fn maybe_store_thumbnail(state: &AppState, uid: Uuid, file_id: Uuid, conte
             small.write_to(&mut out, image::ImageFormat::Jpeg).ok()?;
             Some(out.into_inner())
         })
-        .await else { return };
+        .await
+        else {
+            return;
+        };
         let Some(data) = thumb else { return };
         let key = thumb_key(file_id, uid);
         if let Err(e) = state
@@ -575,7 +627,9 @@ pub async fn thumbnail(
 ) -> Result<impl IntoResponse> {
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
-        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
     if row.deleted_at.is_some() || !can_access(&state.db, uid, &row).await? {
         return Err(AppError::NotFound);
     }
@@ -593,141 +647,9 @@ pub async fn thumbnail(
         .map_err(|e| AppError::Other(anyhow::anyhow!(e)))
 }
 
-#[derive(Serialize, ToSchema)]
-pub struct VersionDto {
-    pub id: Uuid,
-    pub version_no: i32,
-    pub filename: String,
-    pub content_type: String,
-    pub size_bytes: i64,
-    pub sha256: Option<String>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-}
-
-impl From<file_version::Model> for VersionDto {
-    fn from(m: file_version::Model) -> Self {
-        Self {
-            id: m.id, version_no: m.version_no, filename: m.filename,
-            content_type: m.content_type, size_bytes: m.size_bytes,
-            sha256: m.sha256, created_at: m.created_at,
-        }
-    }
-}
-
-#[utoipa::path(get, path = "/files/{id}/versions",
-    responses((status = 200, body = [VersionDto]), (status = 404)))]
-pub async fn list_versions(
-    State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
-    jar: PrivateCookieJar,
-    Path(id): Path<Uuid>,
-) -> Result<Json<Vec<VersionDto>>> {
-    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
-    let row = file_object::Entity::find_by_id(id)
-        .one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if !can_access(&state.db, uid, &row).await? { return Err(AppError::NotFound); }
-    let rows = file_version::Entity::find()
-        .filter(file_version::Column::FileId.eq(id))
-        .order_by_desc(file_version::Column::VersionNo)
-        .all(&state.db).await?;
-    Ok(Json(rows.into_iter().map(VersionDto::from).collect()))
-}
-
-async fn snapshot_current(
-    db: &sea_orm::DatabaseConnection,
-    file: &file_object::Model,
-) -> Result<i32> {
-    let rows: Vec<i32> = file_version::Entity::find()
-        .filter(file_version::Column::FileId.eq(file.id))
-        .select_only()
-        .column(file_version::Column::VersionNo)
-        .into_tuple()
-        .all(db)
-        .await?;
-    let next = rows.into_iter().max().unwrap_or(0) + 1;
-    file_version::ActiveModel {
-        id: Set(Uuid::now_v7()),
-        file_id: Set(file.id),
-        version_no: Set(next),
-        storage_key: Set(file.storage_key.clone()),
-        filename: Set(file.filename.clone()),
-        content_type: Set(file.content_type.clone()),
-        size_bytes: Set(file.size_bytes),
-        sha256: Set(file.sha256.clone()),
-        created_at: Set(chrono::Utc::now()),
-    }
-    .insert(db)
-    .await?;
-    Ok(next)
-}
-
-#[utoipa::path(post, path = "/files/{id}/versions", request_body = Base64UploadInput,
-    responses((status = 201, body = FileDto), (status = 404)))]
-pub async fn create_version(
-    State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
-    jar: PrivateCookieJar,
-    Path(id): Path<Uuid>,
-    Json(input): Json<Base64UploadInput>,
-) -> Result<(StatusCode, Json<FileDto>)> {
-    input.validate().map_err(|e| AppError::Validation(e.to_string()))?;
-    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
-    let row = file_object::Entity::find_by_id(id)
-        .one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if row.deleted_at.is_some() || !can_access(&state.db, uid, &row).await? {
-        return Err(AppError::NotFound);
-    }
-    let data = B64.decode(input.data_base64.as_bytes())
-        .map_err(|e| AppError::BadRequest(format!("base64 decode: {e}")))?;
-    if data.len() > MAX_FILE_BYTES {
-        return Err(AppError::BadRequest(format!("file too large: max {MAX_FILE_BYTES} bytes")));
-    }
-    enforce_quota(&state.db, uid, data.len() as i64).await?;
-
-    snapshot_current(&state.db, &row).await?;
-
-    let new_key = format!("u/{uid}/{}", Uuid::now_v7());
-    state.storage.put(&ObjPath::from(new_key.clone()), PutPayload::from_bytes(Bytes::from(data.clone()))).await?;
-    let sha = hex::encode(sha2::Sha256::digest(&data));
-    let mut am: file_object::ActiveModel = row.into();
-    am.storage_key = Set(new_key);
-    am.content_type = Set(input.content_type);
-    am.size_bytes = Set(data.len() as i64);
-    am.sha256 = Set(Some(sha));
-    let updated = am.update(&state.db).await?;
-    Ok((StatusCode::CREATED, Json(FileDto::from(updated))))
-}
-
-#[utoipa::path(post, path = "/files/{id}/versions/{n}/restore",
-    responses((status = 200, body = FileDto), (status = 404)))]
-pub async fn restore_version(
-    State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
-    jar: PrivateCookieJar,
-    Path((id, n)): Path<(Uuid, i32)>,
-) -> Result<Json<FileDto>> {
-    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
-    let row = file_object::Entity::find_by_id(id)
-        .one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if row.deleted_at.is_some() || !can_access(&state.db, uid, &row).await? {
-        return Err(AppError::NotFound);
-    }
-    let v = file_version::Entity::find()
-        .filter(file_version::Column::FileId.eq(id))
-        .filter(file_version::Column::VersionNo.eq(n))
-        .one(&state.db)
-        .await?
-        .ok_or(AppError::NotFound)?;
-    snapshot_current(&state.db, &row).await?;
-    let mut am: file_object::ActiveModel = row.into();
-    am.storage_key = Set(v.storage_key);
-    am.filename = Set(v.filename);
-    am.content_type = Set(v.content_type);
-    am.size_bytes = Set(v.size_bytes);
-    am.sha256 = Set(v.sha256);
-    let updated = am.update(&state.db).await?;
-    Ok(Json(FileDto::from(updated)))
-}
+pub mod versions;
+#[allow(unused_imports)]
+pub use versions::*;
 
 #[derive(Deserialize, ToSchema)]
 #[serde(tag = "action", rename_all = "snake_case")]
@@ -764,8 +686,11 @@ pub async fn bulk(
             .filter(file_object::Column::Id.is_in(ids.to_vec()))
             .all(db)
             .await?;
-        Ok(rows.into_iter()
-            .filter(|r| r.owner_id == uid || r.org_id.map(|o| org_ids.contains(&o)).unwrap_or(false))
+        Ok(rows
+            .into_iter()
+            .filter(|r| {
+                r.owner_id == uid || r.org_id.map(|o| org_ids.contains(&o)).unwrap_or(false)
+            })
             .collect())
     }
     let now = chrono::Utc::now();
@@ -774,10 +699,14 @@ pub async fn bulk(
             let rows = resolve_accessible(&state.db, uid, &org_ids, &ids).await?;
             let mut n = 0u64;
             for r in rows {
-                if r.deleted_at.is_some() { continue; }
+                if r.deleted_at.is_some() {
+                    continue;
+                }
                 let mut am: file_object::ActiveModel = r.into();
                 am.deleted_at = Set(Some(now));
-                if am.update(&state.db).await.is_ok() { n += 1; }
+                if am.update(&state.db).await.is_ok() {
+                    n += 1;
+                }
             }
             n
         }
@@ -785,12 +714,20 @@ pub async fn bulk(
             let rows = resolve_accessible(&state.db, uid, &org_ids, &ids).await?;
             let mut n = 0u64;
             for r in rows {
-                if r.deleted_at.is_none() { continue; }
+                if r.deleted_at.is_none() {
+                    continue;
+                }
                 // Only file owner may permanently purge.
-                if r.owner_id != uid { continue; }
+                if r.owner_id != uid {
+                    continue;
+                }
                 let p = ObjPath::from(r.storage_key.clone());
                 let _ = state.storage.delete(&p).await;
-                if file_object::Entity::delete_by_id(r.id).exec(&state.db).await.is_ok() {
+                if file_object::Entity::delete_by_id(r.id)
+                    .exec(&state.db)
+                    .await
+                    .is_ok()
+                {
                     n += 1;
                 }
             }
@@ -801,10 +738,14 @@ pub async fn bulk(
             let mut n = 0u64;
             for r in rows {
                 let mut tags = r.tags.clone();
-                if !tags.contains(&tag) { tags.push(tag.clone()); }
+                if !tags.contains(&tag) {
+                    tags.push(tag.clone());
+                }
                 let mut am: file_object::ActiveModel = r.into();
                 am.tags = Set(tags);
-                if am.update(&state.db).await.is_ok() { n += 1; }
+                if am.update(&state.db).await.is_ok() {
+                    n += 1;
+                }
             }
             n
         }
@@ -815,7 +756,9 @@ pub async fn bulk(
                 let tags: Vec<String> = r.tags.iter().filter(|t| **t != tag).cloned().collect();
                 let mut am: file_object::ActiveModel = r.into();
                 am.tags = Set(tags);
-                if am.update(&state.db).await.is_ok() { n += 1; }
+                if am.update(&state.db).await.is_ok() {
+                    n += 1;
+                }
             }
             n
         }
@@ -823,138 +766,13 @@ pub async fn bulk(
     Ok(Json(BulkResult { affected }))
 }
 
-#[derive(Deserialize, ToSchema, Validate)]
-pub struct TagInput {
-    #[validate(length(min = 1, max = 40))]
-    pub tag: String,
-}
+pub mod tags;
+#[allow(unused_imports)]
+pub use tags::*;
 
-#[utoipa::path(post, path = "/files/{id}/tags", request_body = TagInput,
-    responses((status = 200, body = FileDto), (status = 404)))]
-pub async fn add_tag(
-    State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
-    jar: PrivateCookieJar,
-    Path(id): Path<Uuid>,
-    Json(input): Json<TagInput>,
-) -> Result<Json<FileDto>> {
-    input.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
-    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
-    let row = file_object::Entity::find_by_id(id)
-        .one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if row.owner_id != uid { return Err(AppError::NotFound); }
-    let mut tags = row.tags.clone();
-    if !tags.contains(&input.tag) { tags.push(input.tag); }
-    let mut am: file_object::ActiveModel = row.into();
-    am.tags = Set(tags);
-    let updated = am.update(&state.db).await?;
-    Ok(Json(FileDto::from(updated)))
-}
-
-#[utoipa::path(delete, path = "/files/{id}/tags/{tag}",
-    responses((status = 200, body = FileDto), (status = 404)))]
-pub async fn remove_tag(
-    State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
-    jar: PrivateCookieJar,
-    Path((id, tag)): Path<(Uuid, String)>,
-) -> Result<Json<FileDto>> {
-    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
-    let row = file_object::Entity::find_by_id(id)
-        .one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if row.owner_id != uid { return Err(AppError::NotFound); }
-    let tags: Vec<String> = row.tags.iter().filter(|t| **t != tag).cloned().collect();
-    let mut am: file_object::ActiveModel = row.into();
-    am.tags = Set(tags);
-    let updated = am.update(&state.db).await?;
-    Ok(Json(FileDto::from(updated)))
-}
-
-#[utoipa::path(get, path = "/trash", responses((status = 200, body = FileList)))]
-pub async fn list_trash(
-    State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
-    jar: PrivateCookieJar,
-) -> Result<Json<FileList>> {
-    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
-    let rows = file_object::Entity::find()
-        .filter(file_object::Column::OwnerId.eq(uid))
-        .filter(file_object::Column::DeletedAt.is_not_null())
-        .order_by_desc(file_object::Column::DeletedAt)
-        .limit(200)
-        .all(&state.db)
-        .await?;
-    Ok(Json(FileList {
-        items: rows.into_iter().map(FileDto::from).collect(),
-        next_cursor: None,
-    }))
-}
-
-#[utoipa::path(post, path = "/trash/{id}/restore", responses((status = 204), (status = 404)))]
-pub async fn restore(
-    State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
-    jar: PrivateCookieJar,
-    Path(id): Path<Uuid>,
-) -> Result<StatusCode> {
-    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
-    let row = file_object::Entity::find_by_id(id)
-        .one(&state.db)
-        .await?
-        .ok_or(AppError::NotFound)?;
-    if row.owner_id != uid || row.deleted_at.is_none() {
-        return Err(AppError::NotFound);
-    }
-    let mut am: file_object::ActiveModel = row.into();
-    am.deleted_at = Set(None);
-    am.update(&state.db).await?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-#[utoipa::path(delete, path = "/trash",
-    responses((status = 200, description = "number of files purged")))]
-pub async fn empty_trash(
-    State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
-    jar: PrivateCookieJar,
-) -> Result<Json<serde_json::Value>> {
-    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
-    let rows = file_object::Entity::find()
-        .filter(file_object::Column::OwnerId.eq(uid))
-        .filter(file_object::Column::DeletedAt.is_not_null())
-        .all(&state.db)
-        .await?;
-    let mut purged = 0;
-    for r in rows {
-        let p = ObjPath::from(r.storage_key.clone());
-        let _ = state.storage.delete(&p).await;
-        let _ = file_object::Entity::delete_by_id(r.id).exec(&state.db).await;
-        purged += 1;
-    }
-    Ok(Json(serde_json::json!({ "purged": purged })))
-}
-
-#[utoipa::path(delete, path = "/trash/{id}",
-    responses((status = 204), (status = 404)))]
-pub async fn purge(
-    State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
-    jar: PrivateCookieJar,
-    Path(id): Path<Uuid>,
-) -> Result<StatusCode> {
-    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
-    let row = file_object::Entity::find_by_id(id)
-        .one(&state.db)
-        .await?
-        .ok_or(AppError::NotFound)?;
-    if row.owner_id != uid || row.deleted_at.is_none() {
-        return Err(AppError::NotFound);
-    }
-    let obj_path = ObjPath::from(row.storage_key.clone());
-    let _ = state.storage.delete(&obj_path).await;
-    file_object::Entity::delete_by_id(id).exec(&state.db).await?;
-    Ok(StatusCode::NO_CONTENT)
-}
+pub mod trash;
+#[allow(unused_imports)]
+pub use trash::*;
 
 #[derive(Serialize, ToSchema)]
 pub struct PresignedDto {
@@ -987,7 +805,9 @@ pub async fn presign_upload(
     jar: PrivateCookieJar,
     Json(input): Json<PresignUploadInput>,
 ) -> Result<Json<PresignUploadDto>> {
-    input.validate().map_err(|e| AppError::Validation(e.to_string()))?;
+    input
+        .validate()
+        .map_err(|e| AppError::Validation(e.to_string()))?;
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     enforce_quota(&state.db, uid, input.size_bytes).await?;
     let file_id = Uuid::now_v7();
@@ -1037,8 +857,12 @@ pub async fn confirm_upload(
 ) -> Result<Json<FileDto>> {
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
-        .one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if row.owner_id != uid { return Err(AppError::NotFound); }
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if row.owner_id != uid {
+        return Err(AppError::NotFound);
+    }
 
     // HEAD the object to confirm it exists + fetch size.
     let meta = state
@@ -1073,7 +897,9 @@ pub async fn presign(
 ) -> Result<Json<PresignedDto>> {
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
-        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
     if row.deleted_at.is_some() || !can_access(&state.db, uid, &row).await? {
         return Err(AppError::NotFound);
     }
@@ -1103,18 +929,24 @@ pub async fn head_file(
 ) -> Result<impl IntoResponse> {
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
-        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
     if row.deleted_at.is_some() || !can_access(&state.db, uid, &row).await? {
         return Err(AppError::NotFound);
     }
-    Ok((
-        [
-            (axum::http::header::CONTENT_TYPE, row.content_type.clone()),
-            (axum::http::header::CONTENT_LENGTH, row.size_bytes.to_string()),
-            (axum::http::header::ACCEPT_RANGES, "bytes".to_string()),
-            (axum::http::header::ETAG, format!("\"{}\"", row.sha256.as_deref().unwrap_or(""))),
-        ],
-    ))
+    Ok(([
+        (axum::http::header::CONTENT_TYPE, row.content_type.clone()),
+        (
+            axum::http::header::CONTENT_LENGTH,
+            row.size_bytes.to_string(),
+        ),
+        (axum::http::header::ACCEPT_RANGES, "bytes".to_string()),
+        (
+            axum::http::header::ETAG,
+            format!("\"{}\"", row.sha256.as_deref().unwrap_or("")),
+        ),
+    ],))
 }
 
 #[derive(Deserialize, ToSchema, utoipa::IntoParams)]
@@ -1150,17 +982,22 @@ pub async fn download(
     if let Some(range_hdr) = headers.get(axum::http::header::RANGE)
         && let Some((start, end)) = parse_range(range_hdr.to_str().unwrap_or(""), total)
     {
-        let bytes = state
-            .storage
-            .get_range(&obj_path, start..end + 1)
-            .await?;
+        let bytes = state.storage.get_range(&obj_path, start..end + 1).await?;
         let len = bytes.len() as u64;
         return axum::response::Response::builder()
             .status(axum::http::StatusCode::PARTIAL_CONTENT)
             .header(axum::http::header::CONTENT_TYPE, row.content_type.clone())
             .header(
                 axum::http::header::CONTENT_DISPOSITION,
-                format!("{}; filename=\"{}\"", if dq.inline == Some(true) { "inline" } else { "attachment" }, row.filename),
+                format!(
+                    "{}; filename=\"{}\"",
+                    if dq.inline == Some(true) {
+                        "inline"
+                    } else {
+                        "attachment"
+                    },
+                    row.filename
+                ),
             )
             .header(axum::http::header::CONTENT_LENGTH, len.to_string())
             .header(axum::http::header::ACCEPT_RANGES, "bytes")
@@ -1179,7 +1016,15 @@ pub async fn download(
         .header(axum::http::header::CONTENT_TYPE, row.content_type.clone())
         .header(
             axum::http::header::CONTENT_DISPOSITION,
-            format!("{}; filename=\"{}\"", if dq.inline == Some(true) { "inline" } else { "attachment" }, row.filename),
+            format!(
+                "{}; filename=\"{}\"",
+                if dq.inline == Some(true) {
+                    "inline"
+                } else {
+                    "attachment"
+                },
+                row.filename
+            ),
         )
         .header(axum::http::header::CONTENT_LENGTH, total.to_string())
         .header(axum::http::header::ACCEPT_RANGES, "bytes")
@@ -1264,10 +1109,7 @@ pub async fn create_share(
     let token_hash = sha256_hex(&raw);
     let id = Uuid::now_v7();
 
-    let password_hash = input
-        .password
-        .as_ref()
-        .map(|p| sha256_hex(p));
+    let password_hash = input.password.as_ref().map(|p| sha256_hex(p));
     let model = file_share::ActiveModel {
         id: Set(id),
         file_id: Set(file_id),
@@ -1362,9 +1204,20 @@ pub async fn download_share(
             (axum::http::header::CONTENT_TYPE, row.content_type.clone()),
             (
                 axum::http::header::CONTENT_DISPOSITION,
-                format!("{}; filename=\"{}\"", if dq.inline == Some(true) { "inline" } else { "attachment" }, row.filename),
+                format!(
+                    "{}; filename=\"{}\"",
+                    if dq.inline == Some(true) {
+                        "inline"
+                    } else {
+                        "attachment"
+                    },
+                    row.filename
+                ),
             ),
-            (axum::http::header::CONTENT_LENGTH, row.size_bytes.to_string()),
+            (
+                axum::http::header::CONTENT_LENGTH,
+                row.size_bytes.to_string(),
+            ),
         ],
         body,
     ))
@@ -1561,14 +1414,17 @@ pub async fn download_zip(
     // Fetch all object bytes serially (simple).
     let mut items: Vec<(String, bytes::Bytes)> = Vec::with_capacity(accessible.len());
     for r in accessible {
-        let result = state.storage.get(&ObjPath::from(r.storage_key.clone())).await?;
+        let result = state
+            .storage
+            .get(&ObjPath::from(r.storage_key.clone()))
+            .await?;
         let b = result.bytes().await?;
         items.push((r.filename, b));
     }
 
     let zipped = tokio::task::spawn_blocking(move || -> Result<Vec<u8>> {
         use std::io::{Cursor, Write};
-        use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
+        use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
         let mut buf = Cursor::new(Vec::<u8>::new());
         {
             let mut w = ZipWriter::new(&mut buf);
@@ -1580,12 +1436,19 @@ pub async fn download_zip(
                 let final_name = {
                     let c = seen.entry(name.clone()).or_insert(0);
                     *c += 1;
-                    if *c == 1 { name } else { format!("{}__{}", name, *c - 1) }
+                    if *c == 1 {
+                        name
+                    } else {
+                        format!("{}__{}", name, *c - 1)
+                    }
                 };
-                w.start_file(final_name, opts).map_err(|e| AppError::Other(anyhow::anyhow!("zip: {e}")))?;
-                w.write_all(&bytes).map_err(|e| AppError::Other(anyhow::anyhow!("zip write: {e}")))?;
+                w.start_file(final_name, opts)
+                    .map_err(|e| AppError::Other(anyhow::anyhow!("zip: {e}")))?;
+                w.write_all(&bytes)
+                    .map_err(|e| AppError::Other(anyhow::anyhow!("zip write: {e}")))?;
             }
-            w.finish().map_err(|e| AppError::Other(anyhow::anyhow!("zip finish: {e}")))?;
+            w.finish()
+                .map_err(|e| AppError::Other(anyhow::anyhow!("zip finish: {e}")))?;
         }
         Ok(buf.into_inner())
     })
@@ -1595,10 +1458,14 @@ pub async fn download_zip(
     Ok((
         [
             (axum::http::header::CONTENT_TYPE, "application/zip"),
-            (axum::http::header::CONTENT_DISPOSITION, "attachment; filename=\"simu.zip\""),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                "attachment; filename=\"simu.zip\"",
+            ),
         ],
         zipped,
-    ).into_response())
+    )
+        .into_response())
 }
 
 #[derive(Serialize, ToSchema)]
@@ -1626,17 +1493,28 @@ pub async fn list_comments(
 ) -> Result<Json<Vec<CommentDto>>> {
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
-        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
     if !can_access(&state.db, uid, &row).await? {
         return Err(AppError::NotFound);
     }
     let rows = file_comment::Entity::find()
         .filter(file_comment::Column::FileId.eq(id))
         .order_by_desc(file_comment::Column::CreatedAt)
-        .all(&state.db).await?;
-    Ok(Json(rows.into_iter().map(|r| CommentDto {
-        id: r.id, file_id: r.file_id, user_id: r.user_id, body: r.body, created_at: r.created_at,
-    }).collect()))
+        .all(&state.db)
+        .await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|r| CommentDto {
+                id: r.id,
+                file_id: r.file_id,
+                user_id: r.user_id,
+                body: r.body,
+                created_at: r.created_at,
+            })
+            .collect(),
+    ))
 }
 
 #[utoipa::path(post, path = "/files/{id}/comments", request_body = CommentInput,
@@ -1648,10 +1526,14 @@ pub async fn add_comment(
     Path(id): Path<Uuid>,
     Json(input): Json<CommentInput>,
 ) -> Result<(StatusCode, Json<CommentDto>)> {
-    input.validate().map_err(|e| AppError::Validation(e.to_string()))?;
+    input
+        .validate()
+        .map_err(|e| AppError::Validation(e.to_string()))?;
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
-        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
     if !can_access(&state.db, uid, &row).await? {
         return Err(AppError::NotFound);
     }
@@ -1661,10 +1543,19 @@ pub async fn add_comment(
         user_id: Set(uid),
         body: Set(input.body),
         created_at: Set(chrono::Utc::now()),
-    }.insert(&state.db).await?;
-    Ok((StatusCode::CREATED, Json(CommentDto {
-        id: c.id, file_id: c.file_id, user_id: c.user_id, body: c.body, created_at: c.created_at,
-    })))
+    }
+    .insert(&state.db)
+    .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(CommentDto {
+            id: c.id,
+            file_id: c.file_id,
+            user_id: c.user_id,
+            body: c.body,
+            created_at: c.created_at,
+        }),
+    ))
 }
 
 #[utoipa::path(delete, path = "/files/{file_id}/comments/{id}",
@@ -1677,17 +1568,23 @@ pub async fn delete_comment(
 ) -> Result<StatusCode> {
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let c = file_comment::Entity::find_by_id(id)
-        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
     if c.file_id != file_id {
         return Err(AppError::NotFound);
     }
     let file = file_object::Entity::find_by_id(file_id)
-        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
     // Delete allowed if: user authored the comment OR owns the file.
     if c.user_id != uid && file.owner_id != uid {
         return Err(AppError::NotFound);
     }
-    file_comment::Entity::delete_by_id(id).exec(&state.db).await?;
+    file_comment::Entity::delete_by_id(id)
+        .exec(&state.db)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1701,7 +1598,9 @@ pub async fn star_file(
     use crate::entity::file_star;
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
-        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
     if !can_access(&state.db, uid, &row).await? {
         return Err(AppError::NotFound);
     }
@@ -1709,7 +1608,9 @@ pub async fn star_file(
         user_id: Set(uid),
         file_id: Set(id),
         created_at: Set(chrono::Utc::now()),
-    }.insert(&state.db).await;
+    }
+    .insert(&state.db)
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1725,7 +1626,8 @@ pub async fn unstar_file(
     file_star::Entity::delete_many()
         .filter(file_star::Column::UserId.eq(uid))
         .filter(file_star::Column::FileId.eq(id))
-        .exec(&state.db).await?;
+        .exec(&state.db)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1744,11 +1646,14 @@ pub async fn list_starred(
         .into_tuple()
         .all(&state.db)
         .await?;
-    if fids.is_empty() { return Ok(Json(vec![])); }
+    if fids.is_empty() {
+        return Ok(Json(vec![]));
+    }
     let rows = file_object::Entity::find()
         .filter(file_object::Column::Id.is_in(fids))
         .filter(file_object::Column::DeletedAt.is_null())
-        .all(&state.db).await?;
+        .all(&state.db)
+        .await?;
     Ok(Json(rows.into_iter().map(FileDto::from).collect()))
 }
 
@@ -1769,8 +1674,12 @@ pub async fn move_file(
 ) -> Result<Json<FileDto>> {
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
-        .one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if row.owner_id != uid { return Err(AppError::NotFound); }
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if row.owner_id != uid {
+        return Err(AppError::NotFound);
+    }
     if let Some(org) = input.org_id {
         let ids = user_org_ids(&state.db, uid).await?;
         if !ids.contains(&org) {
@@ -1799,11 +1708,17 @@ pub async fn describe(
     Path(id): Path<Uuid>,
     Json(input): Json<DescribeInput>,
 ) -> Result<Json<FileDto>> {
-    input.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
+    input
+        .validate()
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
-        .one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if row.owner_id != uid { return Err(AppError::NotFound); }
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if row.owner_id != uid {
+        return Err(AppError::NotFound);
+    }
     let mut am: file_object::ActiveModel = row.into();
     am.description = Set(Some(input.description));
     let updated = am.update(&state.db).await?;

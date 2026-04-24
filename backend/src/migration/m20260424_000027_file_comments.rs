@@ -11,7 +11,12 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(FileComments::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(FileComments::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(FileComments::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(FileComments::FileId).uuid().not_null())
                     .col(ColumnDef::new(FileComments::UserId).uuid().not_null())
                     .col(ColumnDef::new(FileComments::Body).text().not_null())
@@ -57,8 +62,21 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum FileObjects { Table, Id }
+enum FileObjects {
+    Table,
+    Id,
+}
 #[derive(Iden)]
-enum Users { Table, Id }
+enum Users {
+    Table,
+    Id,
+}
 #[derive(Iden)]
-enum FileComments { Table, Id, FileId, UserId, Body, CreatedAt }
+enum FileComments {
+    Table,
+    Id,
+    FileId,
+    UserId,
+    Body,
+    CreatedAt,
+}

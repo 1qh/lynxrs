@@ -46,4 +46,8 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum Users { Table, FailedLoginCount, LockedUntil }
+enum Users {
+    Table,
+    FailedLoginCount,
+    LockedUntil,
+}
