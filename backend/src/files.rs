@@ -215,6 +215,8 @@ pub async fn upload(
     .insert(&state.db)
     .await?;
 
+    metrics::counter!("simu_uploads_bytes_total").increment(data.len() as u64);
+    metrics::counter!("simu_uploads_total").increment(1);
     let _ = state.bus.send(EventMsg::FileCreated {
         file_id: model.id,
         owner_id: uid,
@@ -643,6 +645,8 @@ pub async fn upload_json(
     .insert(&state.db)
     .await?;
 
+    metrics::counter!("simu_uploads_bytes_total").increment(data.len() as u64);
+    metrics::counter!("simu_uploads_total").increment(1);
     let _ = state.bus.send(EventMsg::FileCreated {
         file_id: model.id,
         owner_id: uid,
