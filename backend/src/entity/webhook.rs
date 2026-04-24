@@ -12,6 +12,7 @@ pub struct Model {
     pub secret: String,
     pub enabled: bool,
     pub created_at: ChronoDateTimeUtc,
+    pub consecutive_failures: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

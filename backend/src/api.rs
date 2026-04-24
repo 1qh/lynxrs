@@ -275,6 +275,8 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(admin::audit_csv))
         .routes(routes!(admin::set_role))
         .routes(routes!(admin::delete_user))
+        .routes(routes!(admin::lock_user))
+        .routes(routes!(admin::unlock_user))
         .routes(routes!(tokens::create_token, tokens::list_tokens))
         .routes(routes!(tokens::revoke_token))
         .routes(routes!(audit::list_mine))
@@ -293,6 +295,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(webhooks::revoke_webhook))
         .routes(routes!(webhooks::list_deliveries))
         .routes(routes!(webhooks::test_webhook))
+        .routes(routes!(webhooks::enable_webhook))
         .with_state(state.clone())
         .split_for_parts();
 

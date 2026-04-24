@@ -27,6 +27,7 @@ mod m20260424_000024_organizations;
 mod m20260424_000025_file_org_id;
 mod m20260424_000026_org_invites;
 mod m20260424_000027_file_comments;
+mod m20260424_000028_webhook_fail_count;
 
 pub struct Migrator;
 
@@ -61,6 +62,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260424_000025_file_org_id::Migration),
             Box::new(m20260424_000026_org_invites::Migration),
             Box::new(m20260424_000027_file_comments::Migration),
+            Box::new(m20260424_000028_webhook_fail_count::Migration),
         ]
     }
 }

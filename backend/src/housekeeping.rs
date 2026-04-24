@@ -5,7 +5,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::entity::{email_verification, file_object, password_reset};
+use crate::entity::{audit_event, email_verification, file_object, password_reset};
 
 /// Spawn a task that periodically deletes expired/used tokens.
 pub fn spawn(
@@ -62,8 +62,22 @@ async fn run_once(db: &DatabaseConnection, storage: &dyn object_store::ObjectSto
         }
     }
 
-    if pr_deleted > 0 || ev_deleted > 0 || purged > 0 {
-        tracing::info!(pr_deleted, ev_deleted, purged, "housekeeping sweep done");
+    // Audit retention — keep 90 days.
+    let ai_cutoff = now - chrono::Duration::days(90);
+    let audit_deleted = audit_event::Entity::delete_many()
+        .filter(audit_event::Column::CreatedAt.lt(ai_cutoff))
+        .exec(db)
+        .await?
+        .rows_affected;
+
+    if pr_deleted > 0 || ev_deleted > 0 || purged > 0 || audit_deleted > 0 {
+        tracing::info!(
+            pr_deleted,
+            ev_deleted,
+            purged,
+            audit_deleted,
+            "housekeeping sweep done"
+        );
     }
     Ok(())
 }

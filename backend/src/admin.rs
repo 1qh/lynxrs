@@ -245,3 +245,39 @@ pub async fn delete_user(
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(post, path = "/admin/users/{id}/lock", responses((status = 204), (status = 404)))]
+pub async fn lock_user(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
+) -> Result<axum::http::StatusCode> {
+    require_admin(&state, &headers, &jar).await?;
+    let u = user::Entity::find_by_id(id).one(&state.db).await?.ok_or(AppError::NotFound)?;
+    let mut am: user::ActiveModel = u.into();
+    am.locked_until = Set(Some(chrono::Utc::now() + chrono::Duration::days(3650)));
+    am.session_version = Set(am.session_version.unwrap() + 1);
+    am.updated_at = Set(chrono::Utc::now());
+    am.update(&state.db).await?;
+    crate::audit::record(&state.db, None, "admin_user_locked", Some(&headers), serde_json::json!({"user_id": id})).await;
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(post, path = "/admin/users/{id}/unlock", responses((status = 204), (status = 404)))]
+pub async fn unlock_user(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
+) -> Result<axum::http::StatusCode> {
+    require_admin(&state, &headers, &jar).await?;
+    let u = user::Entity::find_by_id(id).one(&state.db).await?.ok_or(AppError::NotFound)?;
+    let mut am: user::ActiveModel = u.into();
+    am.locked_until = Set(None);
+    am.failed_login_count = Set(0);
+    am.updated_at = Set(chrono::Utc::now());
+    am.update(&state.db).await?;
+    crate::audit::record(&state.db, None, "admin_user_unlocked", Some(&headers), serde_json::json!({"user_id": id})).await;
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+

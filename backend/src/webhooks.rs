@@ -64,6 +64,7 @@ pub async fn create_webhook(
         secret: Set(secret.clone()),
         enabled: Set(true),
         created_at: Set(chrono::Utc::now()),
+        consecutive_failures: Set(0),
     }
     .insert(&state.db)
     .await?;
@@ -190,6 +191,24 @@ pub async fn test_webhook(
     Ok(Json(TestResult { status, error: err, duration_ms: elapsed }))
 }
 
+#[utoipa::path(post, path = "/webhooks/{id}/enable",
+    responses((status = 204), (status = 404)))]
+pub async fn enable_webhook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let h = webhook::Entity::find_by_id(id).one(&state.db).await?.ok_or(AppError::NotFound)?;
+    if h.user_id != uid { return Err(AppError::NotFound); }
+    let mut am: webhook::ActiveModel = h.into();
+    am.enabled = Set(true);
+    am.consecutive_failures = Set(0);
+    am.update(&state.db).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub fn spawn_dispatcher(state: AppState) {
     let mut rx = state.bus.subscribe();
     let client = reqwest::Client::builder()
@@ -227,6 +246,7 @@ pub fn spawn_dispatcher(state: AppState) {
                     m.update(body.as_bytes());
                     let sig = hex::encode(m.finalize().into_bytes());
                     let mut delay_ms = 500u64;
+                    let mut ok_once = false;
                     for attempt in 1..=4i32 {
                         let started = std::time::Instant::now();
                         let send = client
@@ -258,7 +278,8 @@ pub fn spawn_dispatcher(state: AppState) {
                             Ok(r) if r.status().is_success() => {
                                 metrics::counter!("simu_webhooks_delivered_total").increment(1);
                                 tracing::info!(webhook_id=%h.id, attempt, status=%r.status(), "webhook delivered");
-                                return;
+                                ok_once = true;
+                                break;
                             }
                             Ok(r) => tracing::warn!(webhook_id=%h.id, attempt, status=%r.status(), "webhook non-2xx"),
                             Err(e) => tracing::warn!(webhook_id=%h.id, attempt, error=%e, "webhook delivery failed"),
@@ -270,6 +291,16 @@ pub fn spawn_dispatcher(state: AppState) {
                         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                         delay_ms *= 2;
                     }
+                    // Persist consecutive_failures; auto-disable at 10.
+                    let new_count = if ok_once { 0 } else { h.consecutive_failures + 1 };
+                    let should_disable = new_count >= 10;
+                    let mut am: webhook::ActiveModel = h.clone().into();
+                    am.consecutive_failures = Set(new_count);
+                    if should_disable {
+                        am.enabled = Set(false);
+                        tracing::warn!(webhook_id=%h.id, "webhook auto-disabled after 10 consecutive failures");
+                    }
+                    let _ = am.update(&db).await;
                 });
             }
         }
