@@ -54,6 +54,25 @@
       ],
       "title": "In-flight requests",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 8 },
+      "id": 4,
+      "targets": [
+        {
+          "expr": "sum(rate(simu_login_success_total[1m]))",
+          "legendFormat": "success",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (reason) (rate(simu_login_failed_total[1m]))",
+          "legendFormat": "failed {{reason}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Login success / failure rate",
+      "type": "timeseries"
     }
   ],
   "refresh": "15s",
