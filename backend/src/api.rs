@@ -134,25 +134,38 @@ async fn ready(
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
     use sea_orm::ConnectionTrait;
-    match state
+    let db_ok = state
         .db
         .query_one(sea_orm::Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
             "SELECT 1".to_string(),
         ))
         .await
-    {
-        Ok(_) => (
-            axum::http::StatusCode::OK,
-            Json(serde_json::json!({"db":"ok"})),
-        )
-            .into_response(),
-        Err(e) => (
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({"db":"fail","error":e.to_string()})),
-        )
-            .into_response(),
-    }
+        .is_ok();
+    let s3_ok = {
+        use futures::StreamExt;
+        let mut stream = state
+            .storage
+            .list(Some(&object_store::path::Path::from("__healthcheck__")));
+        match stream.next().await {
+            Some(Ok(_)) | None => true,
+            Some(Err(_)) => false,
+        }
+    };
+    let all_ok = db_ok && s3_ok;
+    let body = serde_json::json!({
+        "db": if db_ok { "ok" } else { "fail" },
+        "s3": if s3_ok { "ok" } else { "fail" },
+    });
+    (
+        if all_ok {
+            axum::http::StatusCode::OK
+        } else {
+            axum::http::StatusCode::SERVICE_UNAVAILABLE
+        },
+        Json(body),
+    )
+        .into_response()
 }
 
 pub fn build(state: AppState, opts: BuildOpts) -> Router {
