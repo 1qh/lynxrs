@@ -307,6 +307,7 @@ pub async fn delete(
     file_object::Entity::delete_by_id(id)
         .exec(&state.db)
         .await?;
+    let _ = state.bus.send(EventMsg::FileDeleted { file_id: id, owner_id: uid });
     Ok(StatusCode::NO_CONTENT)
 }
 

@@ -24,6 +24,10 @@ pub enum EventMsg {
         owner_id: Uuid,
         filename: String,
     },
+    FileDeleted {
+        file_id: Uuid,
+        owner_id: Uuid,
+    },
     Ping {
         at_ms: i64,
     },

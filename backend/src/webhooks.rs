@@ -108,7 +108,8 @@ pub fn spawn_dispatcher(state: AppState) {
     tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
             let (uid, body) = match &msg {
-                EventMsg::FileCreated { owner_id, .. } => {
+                EventMsg::FileCreated { owner_id, .. }
+                | EventMsg::FileDeleted { owner_id, .. } => {
                     let body = serde_json::to_string(&msg).unwrap_or_default();
                     (*owner_id, body)
                 }
@@ -124,21 +125,38 @@ pub fn spawn_dispatcher(state: AppState) {
                 Err(e) => { tracing::warn!(error=%e, "webhook lookup failed"); continue }
             };
             for h in hooks {
-                let mac = HmacSha256::new_from_slice(h.secret.as_bytes()).unwrap();
-                let mut m = mac.clone();
-                m.update(body.as_bytes());
-                let sig = hex::encode(m.finalize().into_bytes());
-                let send = client
-                    .post(&h.url)
-                    .header("content-type", "application/json")
-                    .header("x-simu-signature", format!("sha256={sig}"))
-                    .body(body.clone())
-                    .send()
-                    .await;
-                match send {
-                    Ok(r) => tracing::info!(webhook_id=%h.id, status=%r.status(), "webhook delivered"),
-                    Err(e) => tracing::warn!(webhook_id=%h.id, error=%e, "webhook delivery failed"),
-                }
+                let client = client.clone();
+                let body = body.clone();
+                tokio::spawn(async move {
+                    let mac = HmacSha256::new_from_slice(h.secret.as_bytes()).unwrap();
+                    let mut m = mac.clone();
+                    m.update(body.as_bytes());
+                    let sig = hex::encode(m.finalize().into_bytes());
+                    let mut delay_ms = 500u64;
+                    for attempt in 1..=4 {
+                        let send = client
+                            .post(&h.url)
+                            .header("content-type", "application/json")
+                            .header("x-simu-signature", format!("sha256={sig}"))
+                            .header("x-simu-attempt", attempt.to_string())
+                            .body(body.clone())
+                            .send()
+                            .await;
+                        match send {
+                            Ok(r) if r.status().is_success() => {
+                                tracing::info!(webhook_id=%h.id, attempt, status=%r.status(), "webhook delivered");
+                                return;
+                            }
+                            Ok(r) => tracing::warn!(webhook_id=%h.id, attempt, status=%r.status(), "webhook non-2xx"),
+                            Err(e) => tracing::warn!(webhook_id=%h.id, attempt, error=%e, "webhook delivery failed"),
+                        }
+                        if attempt == 4 {
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        delay_ms *= 2;
+                    }
+                });
             }
         }
     });
