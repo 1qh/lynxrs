@@ -110,6 +110,7 @@ function Home() {
   const [webhooks, setWebhooks] = useState<Array<{ id: string; url: string; enabled: boolean }>>([])
   const [webhookUrl, setWebhookUrl] = useState('')
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null)
+  const [trash, setTrash] = useState<FileDto[]>([])
 
   const refresh = useCallback(async () => {
     const { data } = await api.GET('/files', { params: { query: {} } })
@@ -177,6 +178,21 @@ function Home() {
     })
     if (error) { console.error('[share]', error); return }
     setShareUrl((data as { url: string }).url)
+  }, [])
+
+  const refreshTrash = useCallback(async () => {
+    const { data } = await api.GET('/trash', {})
+    if (data) setTrash(((data as unknown) as { items: FileDto[] }).items ?? [])
+  }, [])
+
+  const restoreFile = useCallback(async (id: string) => {
+    await api.POST('/trash/{id}/restore', { params: { path: { id } } })
+    void refresh(); void refreshTrash()
+  }, [refresh])
+
+  const purgeFile = useCallback(async (id: string) => {
+    await api.DELETE('/trash/{id}', { params: { path: { id } } })
+    void refreshTrash()
   }, [])
 
   const refreshWebhooks = useCallback(async () => {
@@ -257,6 +273,24 @@ function Home() {
       </view>
       {shareUrl ? (
         <text className="Muted">share: {shareUrl}</text>
+      ) : null}
+      <view className="Button ButtonGhost" bindtap={refreshTrash}>
+        <text className="ButtonText">Load trash</text>
+      </view>
+      {trash.length > 0 ? (
+        <view className="TrashList">
+          {trash.map((f) => (
+            <view key={f.id} className="TrashRow">
+              <text className="FileName">{f.filename}</text>
+              <view className="Button ButtonGhost" bindtap={() => void restoreFile(f.id)}>
+                <text className="ButtonText">restore</text>
+              </view>
+              <view className="Button ButtonGhost" bindtap={() => void purgeFile(f.id)}>
+                <text className="ButtonText">purge</text>
+              </view>
+            </view>
+          ))}
+        </view>
       ) : null}
       <view className="Button ButtonGhost" bindtap={refreshWebhooks}>
         <text className="ButtonText">Load webhooks</text>
