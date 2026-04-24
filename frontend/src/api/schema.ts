@@ -845,6 +845,7 @@ export interface components {
             new_password: string;
         };
         CreateShareInput: {
+            email_to?: string | null;
             password?: string | null;
             /**
              * Format: int64
@@ -2077,7 +2078,10 @@ export interface operations {
     };
     list_mine: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number | null;
+                cursor?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;

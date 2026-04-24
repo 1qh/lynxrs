@@ -65,19 +65,30 @@ pub async fn list_sessions(
     }).collect()))
 }
 
-#[utoipa::path(get, path = "/me/audit", responses((status = 200, body = [AuditDto])))]
+#[derive(serde::Deserialize, utoipa::IntoParams)]
+pub struct AuditQuery {
+    pub limit: Option<u64>,
+    pub cursor: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[utoipa::path(get, path = "/me/audit", params(AuditQuery),
+    responses((status = 200, body = [AuditDto])))]
 pub async fn list_mine(
     State(state): State<AppState>,
     headers: HeaderMap,
     jar: PrivateCookieJar,
+    axum::extract::Query(q): axum::extract::Query<AuditQuery>,
 ) -> Result<Json<Vec<AuditDto>>> {
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
-    let rows = audit_event::Entity::find()
+    let limit = q.limit.unwrap_or(100).min(500);
+    let mut qb = audit_event::Entity::find()
         .filter(audit_event::Column::UserId.eq(uid))
         .order_by_desc(audit_event::Column::CreatedAt)
-        .limit(100)
-        .all(&state.db)
-        .await?;
+        .limit(limit);
+    if let Some(c) = q.cursor {
+        qb = qb.filter(audit_event::Column::CreatedAt.lt(c));
+    }
+    let rows = qb.all(&state.db).await?;
     Ok(Json(
         rows.into_iter()
             .map(|r| AuditDto {

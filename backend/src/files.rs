@@ -278,6 +278,7 @@ pub async fn upload(
 
     metrics::counter!("simu_uploads_bytes_total").increment(data.len() as u64);
     metrics::counter!("simu_uploads_total").increment(1);
+    metrics::histogram!("simu_upload_bytes").record(data.len() as f64);
     maybe_store_thumbnail(&state, uid, model.id, &model.content_type, &data).await;
     let _ = state.bus.send(EventMsg::FileCreated {
         file_id: model.id,
@@ -968,6 +969,7 @@ pub async fn download(
 
     metrics::counter!("simu_downloads_total").increment(1);
     metrics::counter!("simu_downloads_bytes_total").increment(row.size_bytes as u64);
+    metrics::histogram!("simu_download_bytes").record(row.size_bytes as f64);
     let obj_path = ObjPath::from(row.storage_key.clone());
     let total = row.size_bytes as u64;
 
@@ -1040,6 +1042,9 @@ pub struct FileShareDto {
 pub struct CreateShareInput {
     #[serde(default)]
     pub password: Option<String>,
+    #[serde(default)]
+    #[validate(email)]
+    pub email_to: Option<String>,
     /// Optional expiry in hours (default 24, max 720 = 30 days).
     pub ttl_hours: Option<i64>,
 }
@@ -1106,6 +1111,16 @@ pub async fn create_share(
         "{}/api/shares/{raw}",
         state.public_base_url.trim_end_matches('/')
     );
+    if let Some(to) = input.email_to.clone() {
+        let mailer = state.mailer.clone();
+        let url_c = url.clone();
+        let fname = row.filename.clone();
+        tokio::spawn(async move {
+            if let Err(e) = mailer.send_share_link(&to, &url_c, &fname).await {
+                tracing::warn!(error=%e, "share link email failed");
+            }
+        });
+    }
     Ok((
         StatusCode::CREATED,
         Json(FileShareDto {
@@ -1309,6 +1324,7 @@ pub async fn upload_json(
 
     metrics::counter!("simu_uploads_bytes_total").increment(data.len() as u64);
     metrics::counter!("simu_uploads_total").increment(1);
+    metrics::histogram!("simu_upload_bytes").record(data.len() as f64);
     maybe_store_thumbnail(&state, uid, model.id, &model.content_type, &data).await;
     let _ = state.bus.send(EventMsg::FileCreated {
         file_id: model.id,

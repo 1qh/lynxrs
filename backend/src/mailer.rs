@@ -43,6 +43,20 @@ impl Mailer {
         Ok(())
     }
 
+    pub async fn send_share_link(&self, to: &str, share_url: &str, filename: &str) -> anyhow::Result<()> {
+        let body = format!(
+            "A simu user shared a file with you.\n\n  File:  {filename}\n  Link:  {share_url}\n\nThe link may expire or be revoked.\n\n— simu"
+        );
+        let email = Message::builder()
+            .from(self.from.parse()?)
+            .to(to.parse()?)
+            .subject(format!("A file has been shared with you: {filename}"))
+            .header(ContentType::TEXT_PLAIN)
+            .body(body)?;
+        self.transport.send(email).await?;
+        Ok(())
+    }
+
     pub async fn send_new_ip_login(&self, to: &str, ip: &str, ua: &str) -> anyhow::Result<()> {
         let body = format!(
             "A new sign-in to your simu account was just detected.\n\n  IP:         {ip}\n  Device/UA:  {ua}\n\nIf this wasn't you, change your password and revoke sessions immediately.\n\n— simu"
