@@ -81,6 +81,7 @@ pub async fn activate(
     am.updated_at = Set(chrono::Utc::now());
     am.update(&state.db).await?;
     crate::audit::record(&state.db, Some(uid), "mfa_activated", Some(&headers), serde_json::json!({})).await;
+    metrics::counter!("simu_mfa_activated_total").increment(1);
     Ok(StatusCode::NO_CONTENT)
 }
 

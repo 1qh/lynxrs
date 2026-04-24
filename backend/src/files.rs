@@ -1222,6 +1222,7 @@ pub async fn create_share(
             }
         });
     }
+    metrics::counter!("simu_shares_created_total").increment(1);
     Ok((
         StatusCode::CREATED,
         Json(FileShareDto {

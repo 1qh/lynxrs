@@ -102,7 +102,8 @@ pub fn issue_cookie_public(uid: Uuid, v: i32) -> Cookie<'static> {
 }
 
 async fn hash_password(password: String) -> Result<String> {
-    tokio::task::spawn_blocking(move || {
+    let started = std::time::Instant::now();
+    let r = tokio::task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut OsRng);
         Argon2::default()
             .hash_password(password.as_bytes(), &salt)
@@ -110,7 +111,9 @@ async fn hash_password(password: String) -> Result<String> {
             .map_err(|e| AppError::Other(anyhow::anyhow!("hash: {e}")))
     })
     .await
-    .map_err(|e| AppError::Other(anyhow::anyhow!("spawn_blocking: {e}")))?
+    .map_err(|e| AppError::Other(anyhow::anyhow!("spawn_blocking: {e}")))?;
+    metrics::histogram!("simu_argon2_hash_seconds").record(started.elapsed().as_secs_f64());
+    r
 }
 
 async fn verify_password(password: String, phc: String) -> Result<bool> {
