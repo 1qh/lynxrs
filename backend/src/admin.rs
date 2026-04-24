@@ -7,7 +7,7 @@ use utoipa::ToSchema;
 use crate::{
     audit::AuditDto,
     auth::authenticate,
-    entity::{audit_event, file_object, user},
+    entity::{audit_event, file_object, org, user},
     error::{AppError, Result},
     state::AppState,
 };
@@ -342,3 +342,16 @@ pub async fn unlock_user(
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
+
+#[utoipa::path(get, path = "/admin/orgs", responses((status = 200), (status = 401)))]
+pub async fn list_all_orgs(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+) -> Result<axum::Json<Vec<crate::orgs::OrgDto>>> {
+    require_admin(&state, &headers, &jar).await?;
+    let rows = org::Entity::find()
+        .order_by_desc(org::Column::CreatedAt)
+        .all(&state.db).await?;
+    Ok(axum::Json(rows.into_iter().map(crate::orgs::OrgDto::from).collect()))
+}

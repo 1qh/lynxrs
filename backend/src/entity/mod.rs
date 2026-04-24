@@ -8,6 +8,7 @@ pub mod membership;
 pub mod org;
 pub mod org_invite;
 pub mod file_share;
+pub mod file_star;
 pub mod file_version;
 pub mod password_reset;
 pub mod user;
