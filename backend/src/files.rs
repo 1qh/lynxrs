@@ -32,6 +32,7 @@ pub struct FileDto {
     pub sha256: Option<String>,
     pub tags: Vec<String>,
     pub org_id: Option<Uuid>,
+    pub description: Option<String>,
 }
 
 impl From<file_object::Model> for FileDto {
@@ -45,6 +46,7 @@ impl From<file_object::Model> for FileDto {
             sha256: m.sha256,
             tags: m.tags,
             org_id: m.org_id,
+            description: m.description,
         }
     }
 }
@@ -387,6 +389,7 @@ pub async fn upload(
         deleted_at: Set(None),
         tags: Set(vec![]),
         org_id: Set(None),
+        description: Set(None),
     }
     .insert(&state.db)
     .await?;
@@ -956,6 +959,7 @@ pub async fn presign_upload(
         deleted_at: Set(Some(chrono::Utc::now())), // hidden until confirmed
         tags: Set(vec![]),
         org_id: Set(None),
+        description: Set(None),
     }
     .insert(&state.db)
     .await?;
@@ -1455,6 +1459,7 @@ pub async fn upload_json(
         deleted_at: Set(None),
         tags: Set(vec![]),
         org_id: Set(input.org_id),
+        description: Set(None),
     }
     .insert(&state.db)
     .await?;
@@ -1726,6 +1731,32 @@ pub async fn move_file(
     }
     let mut am: file_object::ActiveModel = row.into();
     am.org_id = Set(input.org_id);
+    let updated = am.update(&state.db).await?;
+    Ok(Json(FileDto::from(updated)))
+}
+
+#[derive(Deserialize, ToSchema, Validate)]
+pub struct DescribeInput {
+    #[validate(length(max = 4000))]
+    pub description: String,
+}
+
+#[utoipa::path(patch, path = "/files/{id}/describe", request_body = DescribeInput,
+    responses((status = 200, body = FileDto), (status = 404)))]
+pub async fn describe(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+    Json(input): Json<DescribeInput>,
+) -> Result<Json<FileDto>> {
+    input.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let row = file_object::Entity::find_by_id(id)
+        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+    if row.owner_id != uid { return Err(AppError::NotFound); }
+    let mut am: file_object::ActiveModel = row.into();
+    am.description = Set(Some(input.description));
     let updated = am.update(&state.db).await?;
     Ok(Json(FileDto::from(updated)))
 }

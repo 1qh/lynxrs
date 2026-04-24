@@ -16,6 +16,7 @@ pub struct Model {
     pub deleted_at: Option<ChronoDateTimeUtc>,
     pub tags: Vec<String>,
     pub org_id: Option<Uuid>,
+    pub description: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

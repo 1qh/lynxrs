@@ -548,6 +548,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/files/{id}/describe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["describe"];
+        trace?: never;
+    };
     "/files/{id}/move": {
         parameters: {
             query?: never;
@@ -1269,6 +1285,9 @@ export interface components {
             /** Format: uuid */
             webhook_id: string;
         };
+        DescribeInput: {
+            description: string;
+        };
         EnrollDto: {
             otpauth_url: string;
             secret: string;
@@ -1302,6 +1321,7 @@ export interface components {
             content_type: string;
             /** Format: date-time */
             created_at: string;
+            description?: string | null;
             filename: string;
             /** Format: uuid */
             id: string;
@@ -2572,6 +2592,37 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    describe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DescribeInput"];
+            };
+        };
         responses: {
             200: {
                 headers: {
