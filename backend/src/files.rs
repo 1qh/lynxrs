@@ -456,6 +456,29 @@ pub async fn purge(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(head, path = "/files/{id}", responses((status = 200), (status = 404)))]
+pub async fn head_file(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let row = file_object::Entity::find_by_id(id)
+        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+    if row.owner_id != uid || row.deleted_at.is_some() {
+        return Err(AppError::NotFound);
+    }
+    Ok((
+        [
+            (axum::http::header::CONTENT_TYPE, row.content_type.clone()),
+            (axum::http::header::CONTENT_LENGTH, row.size_bytes.to_string()),
+            (axum::http::header::ACCEPT_RANGES, "bytes".to_string()),
+            (axum::http::header::ETAG, format!("\"{}\"", row.sha256.as_deref().unwrap_or(""))),
+        ],
+    ))
+}
+
 #[derive(Deserialize, ToSchema, utoipa::IntoParams)]
 pub struct DownloadQuery {
     /// If true, serve Content-Disposition: inline (for browser preview).

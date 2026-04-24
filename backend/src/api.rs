@@ -193,7 +193,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(files::purge))
         .routes(routes!(files::add_tag))
         .routes(routes!(files::remove_tag))
-        .routes(routes!(files::download, files::rename))
+        .routes(routes!(files::download, files::rename, files::head_file))
         .routes(routes!(files::delete))
         .routes(routes!(files::create_share, files::list_shares))
         .routes(routes!(files::download_share))
