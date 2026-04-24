@@ -106,6 +106,7 @@ function Home() {
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [mfaSecret, setMfaSecret] = useState<string | null>(null)
+  const [audit, setAudit] = useState<Array<{ action: string; ip?: string | null; created_at: string }>>([])
 
   const refresh = useCallback(async () => {
     const { data } = await api.GET('/files', { params: { query: {} } })
@@ -175,6 +176,11 @@ function Home() {
     setShareUrl((data as { url: string }).url)
   }, [])
 
+  const loadAudit = useCallback(async () => {
+    const { data } = await api.GET('/me/audit', {})
+    if (data) setAudit(data as Array<{ action: string; ip?: string | null; created_at: string }>)
+  }, [])
+
   const mfaEnroll = useCallback(async () => {
     const { data, error } = await api.POST('/mfa/enroll', {})
     if (error) { console.error('[mfa]', error); return }
@@ -225,6 +231,19 @@ function Home() {
       </view>
       {shareUrl ? (
         <text className="Muted">share: {shareUrl}</text>
+      ) : null}
+      <view className="Button ButtonGhost" bindtap={loadAudit}>
+        <text className="ButtonText">Load audit log</text>
+      </view>
+      {audit.length > 0 ? (
+        <view className="AuditList">
+          {audit.slice(0, 20).map((a, i) => (
+            <view key={i} className="AuditRow">
+              <text className="AuditAction">{a.action}</text>
+              <text className="Muted"> · {a.ip ?? 'n/a'} · {a.created_at.slice(0, 19)}</text>
+            </view>
+          ))}
+        </view>
       ) : null}
       {!user.totp_enabled ? (
         <view className="Button ButtonGhost" bindtap={mfaEnroll}>
