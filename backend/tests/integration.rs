@@ -55,21 +55,22 @@ async fn spawn_app() -> App {
     Migrator::up(&db, None).await.expect("migrate");
 
     let bucket = "test-bucket";
-    let storage: Arc<dyn object_store::ObjectStore> = Arc::new(
-        AmazonS3Builder::new()
-            .with_endpoint(&s3_endpoint)
-            .with_access_key_id("minioadmin")
-            .with_secret_access_key("minioadmin")
-            .with_bucket_name(bucket)
-            .with_region("us-east-1")
-            .with_allow_http(true)
-            .build()
-            .expect("s3 build"),
-    );
+    let s3_typed = AmazonS3Builder::new()
+        .with_endpoint(&s3_endpoint)
+        .with_access_key_id("minioadmin")
+        .with_secret_access_key("minioadmin")
+        .with_bucket_name(bucket)
+        .with_region("us-east-1")
+        .with_allow_http(true)
+        .build()
+        .expect("s3 build");
+    let signer: Arc<object_store::aws::AmazonS3> = Arc::new(s3_typed);
+    let storage: Arc<dyn object_store::ObjectStore> = signer.clone();
 
     let state = AppState {
         db,
         storage,
+        signer,
         bucket: bucket.to_string(),
         cookie_key: Key::generate(),
         bus: events::new_bus(16),

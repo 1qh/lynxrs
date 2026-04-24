@@ -376,11 +376,11 @@ pub async fn thumbnail(
         .await
         .map_err(|_| AppError::NotFound)?;
     let body = axum::body::Body::from_stream(result.into_stream());
-    Ok(axum::response::Response::builder()
+    axum::response::Response::builder()
         .status(axum::http::StatusCode::OK)
         .header(axum::http::header::CONTENT_TYPE, "image/jpeg")
         .body(body)
-        .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?)
+        .map_err(|e| AppError::Other(anyhow::anyhow!(e)))
 }
 
 #[derive(Serialize, ToSchema)]
