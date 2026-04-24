@@ -338,7 +338,7 @@ pub async fn download(
             .get_range(&obj_path, start..end + 1)
             .await?;
         let len = bytes.len() as u64;
-        return Ok(axum::response::Response::builder()
+        return axum::response::Response::builder()
             .status(axum::http::StatusCode::PARTIAL_CONTENT)
             .header(axum::http::header::CONTENT_TYPE, row.content_type.clone())
             .header(
@@ -352,12 +352,12 @@ pub async fn download(
                 format!("bytes {start}-{end}/{total}"),
             )
             .body(axum::body::Body::from(bytes))
-            .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?);
+            .map_err(|e| AppError::Other(anyhow::anyhow!(e)));
     }
 
     let result = state.storage.get(&obj_path).await?;
     let body = axum::body::Body::from_stream(result.into_stream());
-    Ok(axum::response::Response::builder()
+    axum::response::Response::builder()
         .status(axum::http::StatusCode::OK)
         .header(axum::http::header::CONTENT_TYPE, row.content_type.clone())
         .header(
@@ -367,7 +367,7 @@ pub async fn download(
         .header(axum::http::header::CONTENT_LENGTH, total.to_string())
         .header(axum::http::header::ACCEPT_RANGES, "bytes")
         .body(body)
-        .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?)
+        .map_err(|e| AppError::Other(anyhow::anyhow!(e)))
 }
 
 fn parse_range(raw: &str, total: u64) -> Option<(u64, u64)> {
