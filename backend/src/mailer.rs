@@ -43,6 +43,20 @@ impl Mailer {
         Ok(())
     }
 
+    pub async fn send_new_ip_login(&self, to: &str, ip: &str, ua: &str) -> anyhow::Result<()> {
+        let body = format!(
+            "A new sign-in to your simu account was just detected.\n\n  IP:         {ip}\n  Device/UA:  {ua}\n\nIf this wasn't you, change your password and revoke sessions immediately.\n\n— simu"
+        );
+        let email = Message::builder()
+            .from(self.from.parse()?)
+            .to(to.parse()?)
+            .subject("New sign-in to your simu account")
+            .header(ContentType::TEXT_PLAIN)
+            .body(body)?;
+        self.transport.send(email).await?;
+        Ok(())
+    }
+
     pub async fn send_email_verification(
         &self,
         to: &str,

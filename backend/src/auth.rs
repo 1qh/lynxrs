@@ -340,8 +340,45 @@ pub async fn login(
 
     crate::audit::record(&state.db, Some(u.id), "login", Some(&headers), serde_json::json!({})).await;
     metrics::counter!("simu_login_success_total").increment(1);
+    maybe_notify_new_ip(&state, &u, &headers).await;
     let jar = jar.add(issue_cookie(u.id, u.session_version));
     Ok((jar, Json(UserDto::from(u))))
+}
+
+async fn maybe_notify_new_ip(state: &AppState, u: &user::Model, headers: &axum::http::HeaderMap) {
+    let ip = headers
+        .get("x-forwarded-for")
+        .or(headers.get("x-real-ip"))
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    if ip.is_empty() {
+        return;
+    }
+    // Check prior "login" audit events with same ip for this user.
+    use crate::entity::audit_event;
+    let seen = audit_event::Entity::find()
+        .filter(audit_event::Column::UserId.eq(u.id))
+        .filter(audit_event::Column::Action.eq("login"))
+        .filter(audit_event::Column::Ip.eq(ip.clone()))
+        .count(&state.db)
+        .await
+        .unwrap_or(0);
+    if seen > 1 {
+        return; // the current login itself is row #1
+    }
+    let ua = headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("unknown")
+        .to_string();
+    let to = u.email.clone();
+    let mailer = state.mailer.clone();
+    tokio::spawn(async move {
+        if let Err(e) = mailer.send_new_ip_login(&to, &ip, &ua).await {
+            tracing::warn!(error=%e, "new-ip login mail failed");
+        }
+    });
 }
 
 #[utoipa::path(post, path = "/auth/logout", responses((status = 204)))]
