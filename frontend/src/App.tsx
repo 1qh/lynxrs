@@ -128,7 +128,7 @@ function Home() {
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(String(ev.data)) as { kind?: string }
-        if (msg.kind === 'file_created') void refresh()
+        if (msg.kind === 'file_created' || msg.kind === 'file_deleted') void refresh()
       } catch {}
     }
     return () => { try { ws?.close() } catch {} }
