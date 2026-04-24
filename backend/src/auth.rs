@@ -654,6 +654,66 @@ pub async fn csrf_enforce(
 
 /// Middleware: if the request bears `Authorization: Bearer simu_*`, look up the token's scope
 /// and reject mutating methods (POST/PUT/PATCH/DELETE) when the scope is "read".
+type PerUserLimiter = governor::RateLimiter<
+    Uuid,
+    dashmap::DashMap<Uuid, governor::state::InMemoryState>,
+    governor::clock::DefaultClock,
+    governor::middleware::NoOpMiddleware,
+>;
+
+pub fn build_per_user_limiter() -> std::sync::Arc<PerUserLimiter> {
+    let per_sec = std::num::NonZeroU32::new(
+        std::env::var("PER_USER_RPS").ok().and_then(|v| v.parse().ok()).unwrap_or(50),
+    ).unwrap();
+    let quota = governor::Quota::per_second(per_sec);
+    std::sync::Arc::new(governor::RateLimiter::dashmap(quota))
+}
+
+pub async fn per_user_rate_limit(
+    axum::extract::State(limiter): axum::extract::State<std::sync::Arc<PerUserLimiter>>,
+    req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    // Only enforce on mutating requests.
+    if matches!(req.method().as_str(), "GET" | "HEAD" | "OPTIONS") {
+        return next.run(req).await;
+    }
+    // Derive uid: try cookie (uid:version) or bearer hash→lookup is expensive.
+    // Cheap path: uid from simu_session cookie without decryption (ciphertext as key; stable per user session).
+    let uid_key = req
+        .headers()
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| {
+            s.split(';').find_map(|kv| {
+                let t = kv.trim();
+                t.strip_prefix("simu_session=")
+                    .map(|v| Uuid::new_v5(&Uuid::NAMESPACE_OID, v.as_bytes()))
+            })
+        })
+        .or_else(|| {
+            req.headers()
+                .get(axum::http::header::AUTHORIZATION)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.strip_prefix("Bearer "))
+                .map(|t| Uuid::new_v5(&Uuid::NAMESPACE_OID, t.as_bytes()))
+        });
+    let Some(key) = uid_key else {
+        return next.run(req).await;
+    };
+    if limiter.check_key(&key).is_err() {
+        metrics::counter!("simu_rate_limited_total", "kind" => "per_user").increment(1);
+        return (
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            axum::Json(serde_json::json!({"code":"rate_limited","message":"per-user rate limit"})),
+        )
+            .into_response();
+    }
+    next.run(req).await
+}
+
 pub async fn token_scope_enforce(
     axum::extract::State(state): axum::extract::State<AppState>,
     req: axum::http::Request<axum::body::Body>,
