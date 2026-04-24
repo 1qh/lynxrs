@@ -144,6 +144,7 @@ pub fn spawn_dispatcher(state: AppState) {
                             .await;
                         match send {
                             Ok(r) if r.status().is_success() => {
+                                metrics::counter!("simu_webhooks_delivered_total").increment(1);
                                 tracing::info!(webhook_id=%h.id, attempt, status=%r.status(), "webhook delivered");
                                 return;
                             }
@@ -151,6 +152,7 @@ pub fn spawn_dispatcher(state: AppState) {
                             Err(e) => tracing::warn!(webhook_id=%h.id, attempt, error=%e, "webhook delivery failed"),
                         }
                         if attempt == 4 {
+                            metrics::counter!("simu_webhooks_failed_total").increment(1);
                             break;
                         }
                         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
