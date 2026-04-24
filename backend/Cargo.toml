@@ -86,6 +86,7 @@ base64 = "=0.22.1"
 async-trait = "=0.1.89"
 futures = "=0.3.31"
 totp-rs = { version = "=5.7.1", features = ["gen_secret", "otpauth"] }
+image = { version = "=0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 rand = "=0.9.1"
 reqwest = { version = "=0.12.12", features = ["json", "rustls-tls"], default-features = false }
 

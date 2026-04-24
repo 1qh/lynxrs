@@ -221,6 +221,7 @@ pub async fn upload(
 
     metrics::counter!("simu_uploads_bytes_total").increment(data.len() as u64);
     metrics::counter!("simu_uploads_total").increment(1);
+    maybe_store_thumbnail(&state, uid, model.id, &model.content_type, &data).await;
     let _ = state.bus.send(EventMsg::FileCreated {
         file_id: model.id,
         owner_id: uid,
@@ -321,6 +322,65 @@ pub async fn delete(
     am.update(&state.db).await?;
     let _ = state.bus.send(EventMsg::FileDeleted { file_id: id, owner_id: uid });
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn thumb_key(file_id: Uuid, uid: Uuid) -> String {
+    format!("u/{uid}/thumb/{file_id}.jpg")
+}
+
+async fn maybe_store_thumbnail(state: &AppState, uid: Uuid, file_id: Uuid, content_type: &str, bytes: &[u8]) {
+    if !content_type.starts_with("image/") {
+        return;
+    }
+    let bytes = bytes.to_vec();
+    let state = state.clone();
+    tokio::task::spawn(async move {
+        let Ok(thumb) = tokio::task::spawn_blocking(move || -> Option<Vec<u8>> {
+            let img = image::load_from_memory(&bytes).ok()?;
+            let small = img.thumbnail(256, 256);
+            let mut out = std::io::Cursor::new(Vec::new());
+            small.write_to(&mut out, image::ImageFormat::Jpeg).ok()?;
+            Some(out.into_inner())
+        })
+        .await else { return };
+        let Some(data) = thumb else { return };
+        let key = thumb_key(file_id, uid);
+        if let Err(e) = state
+            .storage
+            .put(&ObjPath::from(key), PutPayload::from(Bytes::from(data)))
+            .await
+        {
+            tracing::warn!(%file_id, error=%e, "thumbnail upload failed");
+        }
+    });
+}
+
+#[utoipa::path(get, path = "/files/{id}/thumbnail",
+    responses((status = 200), (status = 404)))]
+pub async fn thumbnail(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let row = file_object::Entity::find_by_id(id)
+        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+    if row.owner_id != uid || row.deleted_at.is_some() {
+        return Err(AppError::NotFound);
+    }
+    let key = thumb_key(id, uid);
+    let result = state
+        .storage
+        .get(&ObjPath::from(key))
+        .await
+        .map_err(|_| AppError::NotFound)?;
+    let body = axum::body::Body::from_stream(result.into_stream());
+    Ok(axum::response::Response::builder()
+        .status(axum::http::StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, "image/jpeg")
+        .body(body)
+        .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?)
 }
 
 #[derive(Serialize, ToSchema)]
@@ -999,6 +1059,7 @@ pub async fn upload_json(
 
     metrics::counter!("simu_uploads_bytes_total").increment(data.len() as u64);
     metrics::counter!("simu_uploads_total").increment(1);
+    maybe_store_thumbnail(&state, uid, model.id, &model.content_type, &data).await;
     let _ = state.bus.send(EventMsg::FileCreated {
         file_id: model.id,
         owner_id: uid,

@@ -194,6 +194,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(files::presign))
         .routes(routes!(files::list_versions, files::create_version))
         .routes(routes!(files::restore_version))
+        .routes(routes!(files::thumbnail))
         .routes(routes!(files::list_trash, files::empty_trash))
         .routes(routes!(files::restore))
         .routes(routes!(files::purge))
