@@ -2,13 +2,17 @@ import { test, expect } from '@playwright/test'
 import { newApi } from './_api'
 import { execSync } from 'node:child_process'
 
-// Restart backend with a low per-user RPS so we can actually observe the limit.
-// If we can't spawn a backend with the right env, skip.
 test('per-user rate limit returns 429 rate_limited', async () => {
-  // The dev backend on :8088 is started with PER_USER_RPS=500. Spawn a second
-  // backend on :8089 with PER_USER_RPS=2 specifically for this test.
+  // Precondition: simu-postgres + .env must be present.
+  try {
+    execSync('test -f /Users/o/simu/backend/.env', { stdio: 'pipe' })
+    execSync('docker ps --format "{{.Names}}" | grep -q simu-postgres', { stdio: 'pipe' })
+  } catch {
+    test.skip(true, 'dev infra not up (need .env + simu-postgres container)')
+    return
+  }
+
   const port = 8089
-  // Read dev .env to inherit DATABASE_URL, SESSION_SECRET, S3_*, etc.
   const envText = execSync('cat /Users/o/simu/backend/.env').toString()
   const baseEnv: Record<string, string> = { ...(process.env as Record<string, string>) }
   for (const line of envText.split('\n')) {
@@ -24,29 +28,28 @@ test('per-user rate limit returns 429 rate_limited', async () => {
     PATH: '/opt/homebrew/opt/libpq/bin:' + (baseEnv.PATH ?? ''),
   }
 
-  // Spawn backend.
   const bin = '/Users/o/simu/backend/target/release/simu-backend'
   const { spawn } = await import('node:child_process')
   const proc = spawn(bin, [], { env, stdio: 'pipe', detached: false })
   let stderr = ''
   proc.stderr?.on('data', (d) => (stderr += d.toString()))
-  // Poll /health until the spawned backend is ready.
-  const started = Date.now()
-  let ready = false
-  while (Date.now() - started < 15_000) {
-    try {
-      const r = await fetch(`http://127.0.0.1:${port}/health`)
-      if (r.ok) { ready = true; break }
-    } catch {}
-    await new Promise((r) => setTimeout(r, 200))
-  }
-  if (!ready) {
-    console.log('spawned backend stderr:', stderr.slice(-1200))
-    proc.kill('SIGTERM')
-    throw new Error('spawned rate-limit backend on 127.0.0.1:' + port + ' did not become ready in 15s')
-  }
 
   try {
+    const started = Date.now()
+    let ready = false
+    while (Date.now() - started < 15_000) {
+      try {
+        const r = await fetch(`http://127.0.0.1:${port}/health`)
+        if (r.ok) { ready = true; break }
+      } catch {}
+      await new Promise((r) => setTimeout(r, 200))
+    }
+    if (!ready) {
+      throw new Error(
+        'spawned backend on 127.0.0.1:' + port + ' not ready in 15s — stderr: ' + stderr.slice(-1200),
+      )
+    }
+
     const api = await newApi(`http://127.0.0.1:${port}`)
     const signup = await api.post('/api/auth/signup', {
       data: { email: `rl-${Date.now()}@t.local`, password: 'hunter2hunter2' },
@@ -63,8 +66,7 @@ test('per-user rate limit returns 429 rate_limited', async () => {
       })
       statuses.push(r.status())
     }
-    const limited = statuses.filter((s) => s === 429)
-    expect(limited.length).toBeGreaterThan(0)
+    expect(statuses.filter((s) => s === 429).length).toBeGreaterThan(0)
 
     // Verify 429 body has code=rate_limited.
     const last = await api.post('/api/files/json', {
@@ -76,6 +78,13 @@ test('per-user rate limit returns 429 rate_limited', async () => {
       expect(body.code).toBe('rate_limited')
     }
   } finally {
-    proc.kill('SIGTERM')
+    // Bulletproof cleanup: always kill the spawned process on any exit path.
+    try {
+      proc.kill('SIGTERM')
+      await new Promise<void>((r) => {
+        const t = setTimeout(() => { try { proc.kill('SIGKILL') } catch {}; r() }, 2000)
+        proc.on('exit', () => { clearTimeout(t); r() })
+      })
+    } catch {}
   }
 })

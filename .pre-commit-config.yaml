@@ -36,19 +36,13 @@ repos:
       - id: cargo-upgrade-latest
         name: cargo upgrade --incompatible --pinned (strict)
         language: system
-        entry: bash -c '
-          set -euo pipefail
-          cd backend
-          cargo upgrade --incompatible --pinned
-          cargo clippy --release --all-targets --locked -- -D warnings
-          git add Cargo.toml Cargo.lock
-        '
+        entry: bash -c "cd backend && cargo upgrade --incompatible --pinned && cargo clippy --release --all-targets --locked -- -D warnings && git add Cargo.toml Cargo.lock"
         pass_filenames: false
-        files: ^backend/(Cargo\.toml|Cargo\.lock|src/.*\.rs)$
+        files: '^backend/(Cargo\.toml|Cargo\.lock|src/.*\.rs)$'
 
       - id: bun-latest
         name: bun install (latest, no lockfile commit)
         language: system
         entry: bash -c 'cd frontend && bun install --silent'
         pass_filenames: false
-        files: ^frontend/(package\.json|src/.*\.(ts|tsx)$|e2e/.*\.(ts|tsx)$)
+        files: '^frontend/(package\.json|src/.*\.(ts|tsx)|e2e/.*\.(ts|tsx))$'

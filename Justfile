@@ -61,13 +61,18 @@ deps-bump:
   branch="simu/deps-$(date -u +%Y%m%dT%H%M%SZ)"
   git checkout -b "$branch"
   cd backend
-  # Safety: snapshot semver pins; abort if any pin got downgraded (cargo-edit
-  # bug observed where MSRV mismatch causes regression).
+  # Keep MSRV in sync with rolling rust:alpine so cargo-edit doesn't silently
+  # refuse to bump crates that require a newer rustc.
+  bash scripts/sync-msrv.sh
+  # Safety: snapshot semver pins; abort if any pin got downgraded.
   grep -oE '^[a-z_-]+ = "=[0-9.]+' Cargo.toml | sort > /tmp/simu-pins-before
   cargo upgrade --incompatible --pinned
   grep -oE '^[a-z_-]+ = "=[0-9.]+' Cargo.toml | sort > /tmp/simu-pins-after
-  if diff /tmp/simu-pins-before /tmp/simu-pins-after | grep -E "^<"; then
-    echo "WARN: some pins got downgraded by cargo-edit; check rust-version MSRV"
+  if diff /tmp/simu-pins-before /tmp/simu-pins-after | grep -qE "^<"; then
+    echo "FAIL: cargo-edit downgraded pins:" >&2
+    diff /tmp/simu-pins-before /tmp/simu-pins-after | grep -E "^[<>]" >&2
+    echo "Likely cause: rust-version MSRV too low for latest crate. Bump rust-version in Cargo.toml." >&2
+    exit 1
   fi
   cargo clippy --all-targets --locked -- -D warnings
   cargo deny check
