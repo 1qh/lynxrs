@@ -1166,7 +1166,7 @@ pub async fn download_share(
         return Err(AppError::BadRequest("share expired".into()));
     }
     if let Some(expected) = share.password_hash.as_deref() {
-        let provided = dq.password.as_deref().map(|p| sha256_hex(p)).unwrap_or_default();
+        let provided = dq.password.as_deref().map(sha256_hex).unwrap_or_default();
         if provided != expected {
             return Err(AppError::Unauthorized);
         }
