@@ -3517,6 +3517,7 @@ dependencies = [
  "hex",
  "hmac",
  "lettre",
+ "metrics",
  "object_store",
  "opentelemetry",
  "opentelemetry-otlp",

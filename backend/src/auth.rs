@@ -319,6 +319,7 @@ pub async fn login(
         am.updated_at = Set(chrono::Utc::now());
         let _ = am.update(&state.db).await;
         let action = if !password_ok { "login_failed" } else { "login_failed_mfa" };
+        metrics::counter!("simu_login_failed_total", "reason" => action).increment(1);
         crate::audit::record(&state.db, Some(uid_for_audit), action, Some(&headers), serde_json::json!({"count": new_count})).await;
         return Err(AppError::Unauthorized);
     }
@@ -338,6 +339,7 @@ pub async fn login(
     }
 
     crate::audit::record(&state.db, Some(u.id), "login", Some(&headers), serde_json::json!({})).await;
+    metrics::counter!("simu_login_success_total").increment(1);
     let jar = jar.add(issue_cookie(u.id, u.session_version));
     Ok((jar, Json(UserDto::from(u))))
 }
