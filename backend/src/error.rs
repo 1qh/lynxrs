@@ -31,6 +31,9 @@ pub enum AppError {
 pub struct ErrorBody {
     pub code: String,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>)]
+    pub request_id: Option<String>,
 }
 
 impl IntoResponse for AppError {
@@ -49,6 +52,7 @@ impl IntoResponse for AppError {
         let body = ErrorBody {
             code: code.into(),
             message: self.to_string(),
+            request_id: None,
         };
         (status, Json(body)).into_response()
     }

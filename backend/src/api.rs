@@ -15,6 +15,48 @@ use tower_http::{
     trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
 };
 
+async fn inject_request_id_into_errors(
+    req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    // Capture request id from request extensions/headers set by SetRequestIdLayer.
+    let req_id = req
+        .extensions()
+        .get::<tower_http::request_id::RequestId>()
+        .and_then(|id| id.header_value().to_str().ok().map(String::from))
+        .or_else(|| {
+            req.headers()
+                .get("x-request-id")
+                .and_then(|v| v.to_str().ok())
+                .map(String::from)
+        });
+    let res = next.run(req).await;
+    let status = res.status();
+    let is_json = res
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.starts_with("application/json"))
+        .unwrap_or(false);
+    if !status.is_client_error() && !status.is_server_error() || !is_json {
+        return res;
+    }
+    let (parts, body) = res.into_parts();
+    let bytes = match axum::body::to_bytes(body, 64 * 1024).await {
+        Ok(b) => b,
+        Err(_) => return axum::response::Response::from_parts(parts, axum::body::Body::empty()),
+    };
+    let mut val: serde_json::Value = match serde_json::from_slice(&bytes) {
+        Ok(v) => v,
+        Err(_) => return axum::response::Response::from_parts(parts, axum::body::Body::from(bytes)),
+    };
+    if let (Some(obj), Some(id)) = (val.as_object_mut(), req_id) {
+        obj.entry("request_id").or_insert(serde_json::Value::String(id));
+    }
+    let new_body = serde_json::to_vec(&val).unwrap_or_else(|_| bytes.to_vec());
+    axum::response::Response::from_parts(parts, axum::body::Body::from(new_body))
+}
+
 async fn security_headers(
     req: axum::http::Request<axum::body::Body>,
     next: axum::middleware::Next,
@@ -219,18 +261,28 @@ async fn ready(
         }
     };
     let smtp_ok = {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let host = std::env::var("SMTP_HOST").unwrap_or_else(|_| "localhost".into());
         let port: u16 = std::env::var("SMTP_PORT")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(25);
-        tokio::time::timeout(
-            std::time::Duration::from_millis(500),
-            tokio::net::TcpStream::connect((host.as_str(), port)),
-        )
-        .await
-        .map(|r| r.is_ok())
-        .unwrap_or(false)
+        let probe = async {
+            let mut s = tokio::net::TcpStream::connect((host.as_str(), port)).await.ok()?;
+            let mut buf = [0u8; 256];
+            let n = s.read(&mut buf).await.ok()?;
+            if !buf[..n].starts_with(b"220") { return None; }
+            s.write_all(b"EHLO simu.local\r\n").await.ok()?;
+            let n = s.read(&mut buf).await.ok()?;
+            if !buf[..n].starts_with(b"250") { return None; }
+            let _ = s.write_all(b"QUIT\r\n").await;
+            Some(())
+        };
+        tokio::time::timeout(std::time::Duration::from_millis(1000), probe)
+            .await
+            .ok()
+            .flatten()
+            .is_some()
     };
     let all_ok = db_ok && s3_ok;
     let body = serde_json::json!({
@@ -373,6 +425,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
             .nest("/api", oauth::router().with_state(state.clone()))
             .merge(events::router().with_state(state))
             .layer(axum::middleware::from_fn_with_state(per_user_limiter, auth::per_user_rate_limit))
+            .layer(axum::middleware::from_fn(inject_request_id_into_errors))
             .layer(axum::middleware::from_fn(auth::csrf_enforce))
             .layer(axum::middleware::from_fn_with_state(scope_state, auth::token_scope_enforce))
             .layer(GovernorLayer::new(governor_conf).error_handler(|err| {

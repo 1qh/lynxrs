@@ -1295,6 +1295,7 @@ export interface components {
         ErrorBody: {
             code: string;
             message: string;
+            request_id?: string | null;
         };
         EventMsg: {
             /** Format: uuid */
