@@ -26,7 +26,7 @@ backend-build:
   cd backend && cargo build --release --locked
 
 backend-image tag="dev":
-  docker build -t simu-backend:{{tag}} -f backend/Dockerfile backend
+  DOCKER_BUILDKIT=1 docker build -t simu-backend:{{tag}} -f backend/Dockerfile backend
 
 frontend-build:
   cd frontend && bun run build

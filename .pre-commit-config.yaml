@@ -30,28 +30,18 @@ repos:
         pass_filenames: false
         files: \.(ts|tsx)$
 
-      # Spike policy: chase upstream. Every commit tries to bump Rust pins to
-      # latest. If the bump still builds+lints clean, the new Cargo.toml gets
-      # staged along with the commit. If the bump breaks anything, Cargo.toml
-      # is reverted so the commit still goes through (warning logged).
+      # Spike policy: chase upstream and block commits that break parity.
+      # Every commit bumps Rust pins to latest; if the bump breaks clippy or
+      # builds, the commit is REJECTED (fix the breakage, then re-commit).
       - id: cargo-upgrade-latest
-        name: cargo upgrade --incompatible --pinned (tolerant)
+        name: cargo upgrade --incompatible --pinned (strict)
         language: system
         entry: bash -c '
-          set -u
+          set -euo pipefail
           cd backend
-          cp Cargo.toml Cargo.toml.bak
-          cp Cargo.lock Cargo.lock.bak
-          if cargo upgrade --incompatible --pinned >/dev/null 2>&1 && \
-             cargo clippy --release --all-targets --locked -- -D warnings >/dev/null 2>&1; then
-            rm Cargo.toml.bak Cargo.lock.bak
-            git add Cargo.toml Cargo.lock
-            echo "[deps] rust pins bumped"
-          else
-            mv Cargo.toml.bak Cargo.toml
-            mv Cargo.lock.bak Cargo.lock
-            echo "[deps] rust upgrade failed, keeping current pins (fix API breakage manually)"
-          fi
+          cargo upgrade --incompatible --pinned
+          cargo clippy --release --all-targets --locked -- -D warnings
+          git add Cargo.toml Cargo.lock
         '
         pass_filenames: false
         always_run: true
