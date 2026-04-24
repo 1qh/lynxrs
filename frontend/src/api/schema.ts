@@ -1378,7 +1378,10 @@ export interface operations {
     };
     download: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description If true, serve Content-Disposition: inline (for browser preview). */
+                inline?: boolean | null;
+            };
             header?: never;
             path: {
                 id: string;
@@ -1388,6 +1391,12 @@ export interface operations {
         requestBody?: never;
         responses: {
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            206: {
                 headers: {
                     [name: string]: unknown;
                 };

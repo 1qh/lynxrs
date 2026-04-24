@@ -456,12 +456,20 @@ pub async fn purge(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[utoipa::path(get, path = "/files/{id}", responses((status = 200), (status = 404)))]
+#[derive(Deserialize, ToSchema, utoipa::IntoParams)]
+pub struct DownloadQuery {
+    /// If true, serve Content-Disposition: inline (for browser preview).
+    pub inline: Option<bool>,
+}
+
+#[utoipa::path(get, path = "/files/{id}", params(DownloadQuery),
+    responses((status = 200), (status = 206), (status = 404)))]
 pub async fn download(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     Path(id): Path<Uuid>,
+    axum::extract::Query(dq): axum::extract::Query<DownloadQuery>,
 ) -> Result<impl IntoResponse> {
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
@@ -488,7 +496,7 @@ pub async fn download(
             .header(axum::http::header::CONTENT_TYPE, row.content_type.clone())
             .header(
                 axum::http::header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"{}\"", row.filename),
+                format!("{}; filename=\"{}\"", if dq.inline == Some(true) { "inline" } else { "attachment" }, row.filename),
             )
             .header(axum::http::header::CONTENT_LENGTH, len.to_string())
             .header(axum::http::header::ACCEPT_RANGES, "bytes")
@@ -507,7 +515,7 @@ pub async fn download(
         .header(axum::http::header::CONTENT_TYPE, row.content_type.clone())
         .header(
             axum::http::header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", row.filename),
+            format!("{}; filename=\"{}\"", if dq.inline == Some(true) { "inline" } else { "attachment" }, row.filename),
         )
         .header(axum::http::header::CONTENT_LENGTH, total.to_string())
         .header(axum::http::header::ACCEPT_RANGES, "bytes")
@@ -624,6 +632,7 @@ pub async fn create_share(
 pub async fn download_share(
     State(state): State<AppState>,
     Path(token): Path<String>,
+    axum::extract::Query(dq): axum::extract::Query<DownloadQuery>,
 ) -> Result<impl IntoResponse> {
     let token_hash = sha256_hex(&token);
     let share = file_share::Entity::find()
@@ -655,7 +664,7 @@ pub async fn download_share(
             (axum::http::header::CONTENT_TYPE, row.content_type.clone()),
             (
                 axum::http::header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"{}\"", row.filename),
+                format!("{}; filename=\"{}\"", if dq.inline == Some(true) { "inline" } else { "attachment" }, row.filename),
             ),
             (axum::http::header::CONTENT_LENGTH, row.size_bytes.to_string()),
         ],
