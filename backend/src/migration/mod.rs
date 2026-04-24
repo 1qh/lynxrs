@@ -24,6 +24,7 @@ mod m20260424_000021_share_password;
 mod m20260424_000022_user_profile;
 mod m20260424_000023_token_scopes;
 mod m20260424_000024_organizations;
+mod m20260424_000025_file_org_id;
 
 pub struct Migrator;
 
@@ -55,6 +56,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260424_000022_user_profile::Migration),
             Box::new(m20260424_000023_token_scopes::Migration),
             Box::new(m20260424_000024_organizations::Migration),
+            Box::new(m20260424_000025_file_org_id::Migration),
         ]
     }
 }

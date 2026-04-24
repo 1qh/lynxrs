@@ -885,6 +885,8 @@ export interface components {
             content_type: string;
             data_base64: string;
             filename: string;
+            /** Format: uuid */
+            org_id?: string | null;
         };
         BulkAction: {
             /** @enum {string} */
@@ -985,6 +987,8 @@ export interface components {
             filename: string;
             /** Format: uuid */
             id: string;
+            /** Format: uuid */
+            org_id?: string | null;
             sha256?: string | null;
             /** Format: int64 */
             size_bytes: number;

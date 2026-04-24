@@ -122,6 +122,32 @@ impl Default for BuildOpts {
     }
 }
 
+async fn api_docs_html() -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let html = r#"<!doctype html>
+<html>
+<head>
+  <title>Simu API</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+  <script
+    id="api-reference"
+    data-url="/api-docs/openapi.json"
+    data-configuration='{"theme":"default","hideDownloadButton":false}'
+  ></script>
+  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+</body>
+</html>"#;
+    (
+        axum::http::StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
+    )
+        .into_response()
+}
+
 async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "status": "ok" }))
 }
@@ -338,6 +364,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
                     async move { Json(doc) }
                 }),
             )
+            .route("/docs", get(api_docs_html))
             .fallback(not_found)
             .layer(prometheus_layer)
             .layer(

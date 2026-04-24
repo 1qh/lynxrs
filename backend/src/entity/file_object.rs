@@ -15,6 +15,7 @@ pub struct Model {
     pub sha256: Option<String>,
     pub deleted_at: Option<ChronoDateTimeUtc>,
     pub tags: Vec<String>,
+    pub org_id: Option<Uuid>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

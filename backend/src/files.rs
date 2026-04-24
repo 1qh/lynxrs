@@ -31,6 +31,7 @@ pub struct FileDto {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub sha256: Option<String>,
     pub tags: Vec<String>,
+    pub org_id: Option<Uuid>,
 }
 
 impl From<file_object::Model> for FileDto {
@@ -43,12 +44,34 @@ impl From<file_object::Model> for FileDto {
             created_at: m.created_at,
             sha256: m.sha256,
             tags: m.tags,
+            org_id: m.org_id,
         }
     }
 }
 
 const MAX_FILE_BYTES: usize = 50 * 1024 * 1024; // 50 MB cap for spike
 const USER_QUOTA_BYTES: i64 = 500 * 1024 * 1024; // 500 MB per user
+
+async fn user_org_ids(db: &sea_orm::DatabaseConnection, uid: Uuid) -> Result<Vec<Uuid>> {
+    use crate::entity::membership;
+    let mbrs = membership::Entity::find()
+        .filter(membership::Column::UserId.eq(uid))
+        .select_only()
+        .column(membership::Column::OrgId)
+        .into_tuple::<Uuid>()
+        .all(db)
+        .await?;
+    Ok(mbrs)
+}
+
+async fn can_access(db: &sea_orm::DatabaseConnection, uid: Uuid, file: &file_object::Model) -> Result<bool> {
+    if file.owner_id == uid { return Ok(true); }
+    if let Some(org) = file.org_id {
+        let ids = user_org_ids(db, uid).await?;
+        return Ok(ids.contains(&org));
+    }
+    Ok(false)
+}
 
 async fn used_bytes(db: &sea_orm::DatabaseConnection, uid: Uuid) -> Result<i64> {
     let sizes: Vec<i64> = file_object::Entity::find()
@@ -272,6 +295,7 @@ pub async fn upload(
         sha256: Set(Some(sha)),
         deleted_at: Set(None),
         tags: Set(vec![]),
+        org_id: Set(None),
     }
     .insert(&state.db)
     .await?;
@@ -321,8 +345,13 @@ pub async fn list(
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let limit = q.limit.unwrap_or(50).min(200);
 
+    let org_ids = user_org_ids(&state.db, uid).await?;
+    let mut access = sea_orm::Condition::any().add(file_object::Column::OwnerId.eq(uid));
+    if !org_ids.is_empty() {
+        access = access.add(file_object::Column::OrgId.is_in(org_ids));
+    }
     let mut query = file_object::Entity::find()
-        .filter(file_object::Column::OwnerId.eq(uid))
+        .filter(access)
         .filter(file_object::Column::DeletedAt.is_null())
         .order_by_desc(file_object::Column::CreatedAt)
         .limit(limit + 1);
@@ -835,6 +864,7 @@ pub async fn presign_upload(
         sha256: Set(None),
         deleted_at: Set(Some(chrono::Utc::now())), // hidden until confirmed
         tags: Set(vec![]),
+        org_id: Set(None),
     }
     .insert(&state.db)
     .await?;
@@ -930,7 +960,7 @@ pub async fn head_file(
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let row = file_object::Entity::find_by_id(id)
         .one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if row.owner_id != uid || row.deleted_at.is_some() {
+    if row.deleted_at.is_some() || !can_access(&state.db, uid, &row).await? {
         return Err(AppError::NotFound);
     }
     Ok((
@@ -963,7 +993,7 @@ pub async fn download(
         .one(&state.db)
         .await?
         .ok_or(AppError::NotFound)?;
-    if row.owner_id != uid {
+    if row.deleted_at.is_some() || !can_access(&state.db, uid, &row).await? {
         return Err(AppError::NotFound);
     }
 
@@ -1271,6 +1301,8 @@ pub struct Base64UploadInput {
     #[validate(length(min = 1, max = 255))]
     pub content_type: String,
     pub data_base64: String,
+    #[serde(default)]
+    pub org_id: Option<Uuid>,
 }
 
 #[utoipa::path(post, path = "/files/json", request_body = Base64UploadInput,
@@ -1297,6 +1329,14 @@ pub async fn upload_json(
     }
     enforce_quota(&state.db, uid, data.len() as i64).await?;
 
+    // If org_id set, caller must be a member.
+    if let Some(org) = input.org_id {
+        let ids = user_org_ids(&state.db, uid).await?;
+        if !ids.contains(&org) {
+            return Err(AppError::Unauthorized);
+        }
+    }
+
     let id = Uuid::now_v7();
     let storage_key = format!("u/{uid}/{id}");
     let obj_path = ObjPath::from(storage_key.clone());
@@ -1318,6 +1358,7 @@ pub async fn upload_json(
         sha256: Set(Some(sha)),
         deleted_at: Set(None),
         tags: Set(vec![]),
+        org_id: Set(input.org_id),
     }
     .insert(&state.db)
     .await?;
