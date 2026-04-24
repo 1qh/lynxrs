@@ -12,6 +12,7 @@ pub struct Model {
     pub expires_at: Option<ChronoDateTimeUtc>,
     pub created_at: ChronoDateTimeUtc,
     pub revoked_at: Option<ChronoDateTimeUtc>,
+    pub download_count: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

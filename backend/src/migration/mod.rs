@@ -9,6 +9,7 @@ mod m20260424_000006_email_verification;
 mod m20260424_000007_session_version;
 mod m20260424_000008_api_tokens;
 mod m20260424_000009_file_shares;
+mod m20260424_000010_share_downloads;
 
 pub struct Migrator;
 
@@ -25,6 +26,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260424_000007_session_version::Migration),
             Box::new(m20260424_000008_api_tokens::Migration),
             Box::new(m20260424_000009_file_shares::Migration),
+            Box::new(m20260424_000010_share_downloads::Migration),
         ]
     }
 }

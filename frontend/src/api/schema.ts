@@ -407,6 +407,8 @@ export interface components {
         FileShareDto: {
             /** Format: date-time */
             created_at: string;
+            /** Format: int64 */
+            download_count: number;
             /** Format: date-time */
             expires_at?: string | null;
             /** Format: uuid */

@@ -214,6 +214,7 @@ pub async fn download(
 
 #[derive(Serialize, ToSchema)]
 pub struct FileShareDto {
+    pub download_count: i64,
     pub id: Uuid,
     pub file_id: Uuid,
     pub url: String,
@@ -275,6 +276,7 @@ pub async fn create_share(
         expires_at: Set(expires_at),
         created_at: Set(chrono::Utc::now()),
         revoked_at: Set(None),
+        download_count: Set(0),
     }
     .insert(&state.db)
     .await?;
@@ -291,6 +293,7 @@ pub async fn create_share(
             url,
             expires_at: model.expires_at,
             created_at: model.created_at,
+            download_count: model.download_count,
         }),
     ))
 }
@@ -325,6 +328,10 @@ pub async fn download_share(
     let obj_path = ObjPath::from(row.storage_key.clone());
     let result = state.storage.get(&obj_path).await?;
     let bytes = result.bytes().await?;
+    let new_count = share.download_count + 1;
+    let mut am: file_share::ActiveModel = share.into();
+    am.download_count = Set(new_count);
+    let _ = am.update(&state.db).await;
     Ok((
         [
             (axum::http::header::CONTENT_TYPE, row.content_type.clone()),
@@ -371,6 +378,7 @@ pub async fn list_shares(
                 url: String::new(),
                 expires_at: s.expires_at,
                 created_at: s.created_at,
+                download_count: s.download_count,
             })
             .collect(),
     ))
