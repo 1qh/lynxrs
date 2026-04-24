@@ -149,6 +149,63 @@ pub async fn verify(
     Ok(Json(VerifyDto { ok, stored: row.sha256, computed }))
 }
 
+#[derive(Serialize, ToSchema)]
+pub struct MeStatsDto {
+    pub files: u64,
+    pub trashed: u64,
+    pub total_bytes: i64,
+    pub shares: u64,
+    pub tokens: u64,
+    pub webhooks: u64,
+}
+
+#[utoipa::path(get, path = "/me/stats", responses((status = 200, body = MeStatsDto)))]
+pub async fn me_stats(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+) -> Result<Json<MeStatsDto>> {
+    use sea_orm::PaginatorTrait;
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let files = file_object::Entity::find()
+        .filter(file_object::Column::OwnerId.eq(uid))
+        .filter(file_object::Column::DeletedAt.is_null())
+        .count(&state.db)
+        .await?;
+    let trashed = file_object::Entity::find()
+        .filter(file_object::Column::OwnerId.eq(uid))
+        .filter(file_object::Column::DeletedAt.is_not_null())
+        .count(&state.db)
+        .await?;
+    let sizes: Vec<i64> = file_object::Entity::find()
+        .filter(file_object::Column::OwnerId.eq(uid))
+        .filter(file_object::Column::DeletedAt.is_null())
+        .select_only()
+        .column(file_object::Column::SizeBytes)
+        .into_tuple()
+        .all(&state.db)
+        .await?;
+    let total_bytes: i64 = sizes.iter().sum();
+    let shares = file_share::Entity::find()
+        .inner_join(file_object::Entity)
+        .filter(file_object::Column::OwnerId.eq(uid))
+        .filter(file_share::Column::RevokedAt.is_null())
+        .count(&state.db)
+        .await?;
+    let tokens = crate::entity::api_token::Entity::find()
+        .filter(crate::entity::api_token::Column::UserId.eq(uid))
+        .filter(crate::entity::api_token::Column::RevokedAt.is_null())
+        .count(&state.db)
+        .await?;
+    let webhooks = crate::entity::webhook::Entity::find()
+        .filter(crate::entity::webhook::Column::UserId.eq(uid))
+        .count(&state.db)
+        .await?;
+    Ok(Json(MeStatsDto {
+        files, trashed, total_bytes, shares, tokens, webhooks,
+    }))
+}
+
 #[utoipa::path(get, path = "/me/quota", responses((status = 200, body = QuotaDto)))]
 pub async fn quota(
     State(state): State<AppState>,

@@ -66,6 +66,7 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         files::FileList,
         files::FileShareDto,
         files::QuotaDto,
+        files::MeStatsDto,
         files::RenameInput,
         files::VerifyDto,
         files::TagInput,
@@ -190,6 +191,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(files::upload_json))
         .routes(routes!(files::list))
         .routes(routes!(files::quota))
+        .routes(routes!(files::me_stats))
         .routes(routes!(files::verify))
         .routes(routes!(files::presign))
         .routes(routes!(files::list_versions, files::create_version))

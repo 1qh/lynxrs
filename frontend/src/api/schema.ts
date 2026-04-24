@@ -500,6 +500,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["me_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mfa/activate": {
         parameters: {
             query?: never;
@@ -852,6 +868,20 @@ export interface components {
             email: string;
             password: string;
             totp_code?: string | null;
+        };
+        MeStatsDto: {
+            /** Format: int64 */
+            files: number;
+            /** Format: int64 */
+            shares: number;
+            /** Format: int64 */
+            tokens: number;
+            /** Format: int64 */
+            total_bytes: number;
+            /** Format: int64 */
+            trashed: number;
+            /** Format: int64 */
+            webhooks: number;
         };
         MfaCodeInput: {
             code: string;
@@ -1940,6 +1970,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditDto"][];
+                };
+            };
+        };
+    };
+    me_stats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeStatsDto"];
                 };
             };
         };
