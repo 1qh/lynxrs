@@ -181,14 +181,14 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(admin::list_users))
         .routes(routes!(admin::audit_all))
         .routes(routes!(admin::audit_csv))
-        .routes(routes!(tokens::create, tokens::list))
-        .routes(routes!(tokens::revoke))
+        .routes(routes!(tokens::create_token, tokens::list_tokens))
+        .routes(routes!(tokens::revoke_token))
         .routes(routes!(audit::list_mine))
         .routes(routes!(mfa::enroll))
         .routes(routes!(mfa::activate))
         .routes(routes!(mfa::disable))
-        .routes(routes!(webhooks::create, webhooks::list))
-        .routes(routes!(webhooks::revoke))
+        .routes(routes!(webhooks::create_webhook, webhooks::list_webhooks))
+        .routes(routes!(webhooks::revoke_webhook))
         .with_state(state.clone())
         .split_for_parts();
 

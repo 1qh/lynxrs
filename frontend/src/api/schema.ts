@@ -427,9 +427,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        get: operations["list_tokens"];
         put?: never;
-        post: operations["create"];
+        post: operations["create_token"];
         delete?: never;
         options?: never;
         head?: never;
@@ -446,7 +446,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete: operations["revoke"];
+        delete: operations["revoke_token"];
         options?: never;
         head?: never;
         patch?: never;
@@ -459,9 +459,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        get: operations["list_webhooks"];
         put?: never;
-        post: operations["create"];
+        post: operations["create_webhook"];
         delete?: never;
         options?: never;
         head?: never;
@@ -478,7 +478,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete: operations["revoke"];
+        delete: operations["revoke_webhook"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1467,7 +1467,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    list_tokens: {
         parameters: {
             query?: never;
             header?: never;
@@ -1492,7 +1492,7 @@ export interface operations {
             };
         };
     };
-    create: {
+    create_token: {
         parameters: {
             query?: never;
             header?: never;
@@ -1521,7 +1521,7 @@ export interface operations {
             };
         };
     };
-    revoke: {
+    revoke_token: {
         parameters: {
             query?: never;
             header?: never;
@@ -1552,7 +1552,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    list_webhooks: {
         parameters: {
             query?: never;
             header?: never;
@@ -1571,7 +1571,7 @@ export interface operations {
             };
         };
     };
-    create: {
+    create_webhook: {
         parameters: {
             query?: never;
             header?: never;
@@ -1594,7 +1594,7 @@ export interface operations {
             };
         };
     };
-    revoke: {
+    revoke_webhook: {
         parameters: {
             query?: never;
             header?: never;

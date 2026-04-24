@@ -69,7 +69,7 @@ fn random_plaintext_token() -> String {
     request_body = CreateTokenInput,
     responses((status = 201, body = ApiTokenCreated), (status = 401))
 )]
-pub async fn create(
+pub async fn create_token(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
@@ -109,7 +109,7 @@ pub async fn create(
     path = "/tokens",
     responses((status = 200, body = [ApiTokenDto]), (status = 401))
 )]
-pub async fn list(
+pub async fn list_tokens(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
@@ -128,7 +128,7 @@ pub async fn list(
     path = "/tokens/{id}",
     responses((status = 204), (status = 404), (status = 401))
 )]
-pub async fn revoke(
+pub async fn revoke_token(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,

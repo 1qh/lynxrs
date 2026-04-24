@@ -48,7 +48,7 @@ fn gen_secret() -> String {
 
 #[utoipa::path(post, path = "/webhooks", request_body = CreateWebhookInput,
     responses((status = 201, body = WebhookCreated)))]
-pub async fn create(
+pub async fn create_webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
     jar: PrivateCookieJar,
@@ -71,7 +71,7 @@ pub async fn create(
 }
 
 #[utoipa::path(get, path = "/webhooks", responses((status = 200, body = [WebhookDto])))]
-pub async fn list(
+pub async fn list_webhooks(
     State(state): State<AppState>,
     headers: HeaderMap,
     jar: PrivateCookieJar,
@@ -86,7 +86,7 @@ pub async fn list(
 }
 
 #[utoipa::path(delete, path = "/webhooks/{id}", responses((status = 204), (status = 404)))]
-pub async fn revoke(
+pub async fn revoke_webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
     jar: PrivateCookieJar,
