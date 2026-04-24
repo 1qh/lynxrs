@@ -96,6 +96,7 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         orgs::InviteInput,
         orgs::InviteCreated,
         orgs::InvitePreview,
+        orgs::OrgStatsDto,
         admin::SetRoleInput,
         mfa::EnrollDto,
         mfa::MfaCodeInput,
@@ -291,6 +292,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(orgs::create_invite))
         .routes(routes!(orgs::preview_invite))
         .routes(routes!(orgs::accept_invite))
+        .routes(routes!(orgs::org_stats))
         .routes(routes!(mfa::enroll))
         .routes(routes!(mfa::activate))
         .routes(routes!(mfa::disable))

@@ -852,6 +852,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["org_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/shares/{token}": {
         parameters: {
             query?: never;
@@ -1274,6 +1290,14 @@ export interface components {
             id: string;
             name: string;
             slug: string;
+        };
+        OrgStatsDto: {
+            /** Format: int64 */
+            files: number;
+            /** Format: int64 */
+            members: number;
+            /** Format: int64 */
+            total_bytes: number;
         };
         PresignUploadDto: {
             /** Format: int64 */
@@ -3060,6 +3084,33 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    org_stats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgStatsDto"];
+                };
             };
             404: {
                 headers: {

@@ -51,6 +51,30 @@ impl From<file_object::Model> for FileDto {
 
 const MAX_FILE_BYTES: usize = 50 * 1024 * 1024; // 50 MB cap for spike
 const USER_QUOTA_BYTES: i64 = 500 * 1024 * 1024; // 500 MB per user
+const ORG_QUOTA_BYTES: i64 = 5 * 1024 * 1024 * 1024; // 5 GB per org
+
+async fn enforce_org_quota(
+    db: &sea_orm::DatabaseConnection,
+    org_id: Uuid,
+    incoming: i64,
+) -> Result<()> {
+    let sizes: Vec<i64> = file_object::Entity::find()
+        .filter(file_object::Column::OrgId.eq(org_id))
+        .filter(file_object::Column::DeletedAt.is_null())
+        .select_only()
+        .column(file_object::Column::SizeBytes)
+        .into_tuple()
+        .all(db)
+        .await?;
+    let used: i64 = sizes.iter().sum();
+    if used + incoming > ORG_QUOTA_BYTES {
+        return Err(AppError::BadRequest(format!(
+            "org quota exceeded: {} used + {} incoming > {} limit",
+            used, incoming, ORG_QUOTA_BYTES
+        )));
+    }
+    Ok(())
+}
 
 async fn user_org_ids(db: &sea_orm::DatabaseConnection, uid: Uuid) -> Result<Vec<Uuid>> {
     use crate::entity::membership;
@@ -1376,12 +1400,13 @@ pub async fn upload_json(
     }
     enforce_quota(&state.db, uid, data.len() as i64).await?;
 
-    // If org_id set, caller must be a member.
+    // If org_id set, caller must be a member and org must have quota.
     if let Some(org) = input.org_id {
         let ids = user_org_ids(&state.db, uid).await?;
         if !ids.contains(&org) {
             return Err(AppError::Unauthorized);
         }
+        enforce_org_quota(&state.db, org, data.len() as i64).await?;
     }
 
     let id = Uuid::now_v7();

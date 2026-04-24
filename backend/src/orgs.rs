@@ -336,6 +336,45 @@ pub async fn accept_invite(
     Ok(Json(MemberDto { user_id: m.user_id, email: u.email, role: m.role, created_at: m.created_at }))
 }
 
+#[derive(Serialize, ToSchema)]
+pub struct OrgStatsDto {
+    pub members: u64,
+    pub files: u64,
+    pub total_bytes: i64,
+}
+
+#[utoipa::path(get, path = "/orgs/{id}/stats",
+    responses((status = 200, body = OrgStatsDto), (status = 404)))]
+pub async fn org_stats(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+) -> Result<Json<OrgStatsDto>> {
+    use crate::entity::file_object;
+    use sea_orm::PaginatorTrait;
+    use sea_orm::QuerySelect;
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let _ = require_member(&state.db, id, uid).await?;
+    let members = membership::Entity::find()
+        .filter(membership::Column::OrgId.eq(id))
+        .count(&state.db).await?;
+    let files = file_object::Entity::find()
+        .filter(file_object::Column::OrgId.eq(id))
+        .filter(file_object::Column::DeletedAt.is_null())
+        .count(&state.db).await?;
+    let sizes: Vec<i64> = file_object::Entity::find()
+        .filter(file_object::Column::OrgId.eq(id))
+        .filter(file_object::Column::DeletedAt.is_null())
+        .select_only()
+        .column(file_object::Column::SizeBytes)
+        .into_tuple()
+        .all(&state.db)
+        .await?;
+    let total_bytes: i64 = sizes.iter().sum();
+    Ok(Json(OrgStatsDto { members, files, total_bytes }))
+}
+
 #[utoipa::path(delete, path = "/orgs/{id}/members/{user_id}",
     responses((status = 204), (status = 404)))]
 pub async fn remove_member(
