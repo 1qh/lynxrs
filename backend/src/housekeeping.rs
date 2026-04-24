@@ -1,23 +1,29 @@
 //! Background housekeeping tasks — run on a separate tokio task alongside the server.
 
+use object_store::ObjectStoreExt;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use std::sync::Arc;
 use std::time::Duration;
 
-use crate::entity::{email_verification, password_reset};
+use crate::entity::{email_verification, file_object, password_reset};
 
 /// Spawn a task that periodically deletes expired/used tokens.
-pub fn spawn(db: DatabaseConnection, interval: Duration) {
+pub fn spawn(
+    db: DatabaseConnection,
+    interval: Duration,
+    storage: Arc<dyn object_store::ObjectStore>,
+) {
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(interval).await;
-            if let Err(e) = run_once(&db).await {
+            if let Err(e) = run_once(&db, storage.as_ref()).await {
                 tracing::warn!(error=%e, "housekeeping run failed");
             }
         }
     });
 }
 
-async fn run_once(db: &DatabaseConnection) -> anyhow::Result<()> {
+async fn run_once(db: &DatabaseConnection, storage: &dyn object_store::ObjectStore) -> anyhow::Result<()> {
     let now = chrono::Utc::now();
 
     // Delete password reset tokens that are either expired or consumed.
@@ -41,12 +47,23 @@ async fn run_once(db: &DatabaseConnection) -> anyhow::Result<()> {
         .await?
         .rows_affected;
 
-    if pr_deleted > 0 || ev_deleted > 0 {
-        tracing::info!(
-            pr_deleted,
-            ev_deleted,
-            "housekeeping swept expired auth tokens"
-        );
+    // Permanently purge trashed files older than 30 days.
+    let cutoff = now - chrono::Duration::days(30);
+    let old = file_object::Entity::find()
+        .filter(file_object::Column::DeletedAt.lt(cutoff))
+        .all(db)
+        .await?;
+    let mut purged = 0u64;
+    for r in old {
+        let p = object_store::path::Path::from(r.storage_key.clone());
+        let _ = storage.delete(&p).await;
+        if file_object::Entity::delete_by_id(r.id).exec(db).await.is_ok() {
+            purged += 1;
+        }
+    }
+
+    if pr_deleted > 0 || ev_deleted > 0 || purged > 0 {
+        tracing::info!(pr_deleted, ev_deleted, purged, "housekeeping sweep done");
     }
     Ok(())
 }

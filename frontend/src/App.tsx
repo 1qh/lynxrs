@@ -111,6 +111,7 @@ function Home() {
   const [webhookUrl, setWebhookUrl] = useState('')
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null)
   const [trash, setTrash] = useState<FileDto[]>([])
+  const [orgs, setOrgs] = useState<Array<{ id: string; name: string; slug: string }>>([])
 
   const refresh = useCallback(async () => {
     const { data } = await api.GET('/files', { params: { query: {} } })
@@ -179,6 +180,17 @@ function Home() {
     if (error) { console.error('[share]', error); return }
     setShareUrl((data as { url: string }).url)
   }, [])
+
+  const refreshOrgs = useCallback(async () => {
+    const { data } = await api.GET('/orgs', {})
+    if (data) setOrgs(data as Array<{ id: string; name: string; slug: string }>)
+  }, [])
+
+  const createOrg = useCallback(async () => {
+    const slug = `o-${Math.random().toString(36).slice(2, 8)}`
+    await api.POST('/orgs', { body: { name: `Org ${slug}`, slug } })
+    void refreshOrgs()
+  }, [refreshOrgs])
 
   const refreshTrash = useCallback(async () => {
     const { data } = await api.GET('/trash', {})
@@ -273,6 +285,22 @@ function Home() {
       </view>
       {shareUrl ? (
         <text className="Muted">share: {shareUrl}</text>
+      ) : null}
+      <view className="Button ButtonGhost" bindtap={refreshOrgs}>
+        <text className="ButtonText">Load orgs ({orgs.length})</text>
+      </view>
+      <view className="Button ButtonGhost" bindtap={createOrg}>
+        <text className="ButtonText">Create test org</text>
+      </view>
+      {orgs.length > 0 ? (
+        <view className="OrgList">
+          {orgs.map((o) => (
+            <view key={o.id} className="OrgRow">
+              <text className="FileName">{o.name}</text>
+              <text className="Muted"> · {o.slug}</text>
+            </view>
+          ))}
+        </view>
       ) : null}
       <view className="Button ButtonGhost" bindtap={refreshTrash}>
         <text className="ButtonText">Load trash</text>

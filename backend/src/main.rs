@@ -64,7 +64,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Background housekeeping: sweep expired auth tokens every 5 minutes.
-    housekeeping::spawn(db, Duration::from_secs(300));
+    housekeeping::spawn(db, Duration::from_secs(300), state.storage.clone());
     simu_backend::webhooks::spawn_dispatcher(state.clone());
 
     let rate_limit_rps: u64 = std::env::var("RATE_LIMIT_RPS")
