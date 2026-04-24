@@ -1284,6 +1284,8 @@ export interface operations {
                 cursor?: string | null;
                 /** @description Case-insensitive filename substring filter. */
                 q?: string | null;
+                /** @description Filter: only files containing this tag. */
+                tag?: string | null;
             };
             header?: never;
             path?: never;

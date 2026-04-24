@@ -237,6 +237,8 @@ pub struct ListQuery {
     pub cursor: Option<chrono::DateTime<chrono::Utc>>,
     /// Case-insensitive filename substring filter.
     pub q: Option<String>,
+    /// Filter: only files containing this tag.
+    pub tag: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -267,6 +269,12 @@ pub async fn list(
         .limit(limit + 1);
     if let Some(cursor) = q.cursor {
         query = query.filter(file_object::Column::CreatedAt.lt(cursor));
+    }
+    if let Some(t) = q.tag.as_ref().filter(|s| !s.is_empty()) {
+        query = query.filter(sea_orm::sea_query::Expr::cust_with_values(
+            "tags @> ARRAY[$1]::text[]",
+            [t.clone()],
+        ));
     }
     if let Some(needle) = q.q.as_ref().filter(|s| !s.is_empty()) {
         let pat = format!("%{}%", needle.replace('%', "\\%").replace('_', "\\_"));
