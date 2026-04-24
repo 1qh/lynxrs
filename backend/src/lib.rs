@@ -13,6 +13,7 @@ pub mod housekeeping;
 pub mod mailer;
 pub mod mfa;
 pub mod oauth;
+pub mod orgs;
 pub mod migration;
 pub mod state;
 pub mod telemetry;

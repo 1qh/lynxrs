@@ -47,7 +47,7 @@ use tracing::Level;
 use utoipa::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::{admin, audit, auth, error::ErrorBody, events, files, mfa, oauth, state::AppState, tokens, webhooks};
+use crate::{admin, audit, auth, error::ErrorBody, events, files, mfa, oauth, orgs, state::AppState, tokens, webhooks};
 
 const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
 
@@ -86,6 +86,10 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         tokens::ApiTokenCreated,
         tokens::CreateTokenInput,
         audit::AuditDto,
+        orgs::OrgDto,
+        orgs::CreateOrgInput,
+        orgs::MemberDto,
+        orgs::AddMemberInput,
         admin::SetRoleInput,
         mfa::EnrollDto,
         mfa::MfaCodeInput,
@@ -241,6 +245,9 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(tokens::revoke_token))
         .routes(routes!(audit::list_mine))
         .routes(routes!(audit::list_sessions))
+        .routes(routes!(orgs::create_org, orgs::list_orgs))
+        .routes(routes!(orgs::list_members, orgs::add_member))
+        .routes(routes!(orgs::remove_member))
         .routes(routes!(mfa::enroll))
         .routes(routes!(mfa::activate))
         .routes(routes!(mfa::disable))
