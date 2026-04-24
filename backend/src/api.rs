@@ -109,7 +109,16 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         webhooks::DeliveryDto,
         webhooks::TestResult,
     )),
-    tags((name = "simu", description = "Simu SaaS API"))
+    tags(
+        (name = "auth", description = "Authentication, MFA, sessions"),
+        (name = "files", description = "File CRUD, upload, download, versions, tags"),
+        (name = "shares", description = "Public share links"),
+        (name = "webhooks", description = "Outbound webhooks + deliveries"),
+        (name = "orgs", description = "Organizations, memberships, invites"),
+        (name = "admin", description = "Admin-only: users, audit, backup"),
+        (name = "events", description = "WebSocket / SSE event streams"),
+        (name = "me", description = "Current user — profile, quota, stats, export"),
+    )
 )]
 pub struct ApiDoc;
 
