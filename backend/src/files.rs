@@ -480,6 +480,8 @@ pub async fn download(
         return Err(AppError::NotFound);
     }
 
+    metrics::counter!("simu_downloads_total").increment(1);
+    metrics::counter!("simu_downloads_bytes_total").increment(row.size_bytes as u64);
     let obj_path = ObjPath::from(row.storage_key.clone());
     let total = row.size_bytes as u64;
 
