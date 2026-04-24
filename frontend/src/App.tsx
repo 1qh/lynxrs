@@ -194,10 +194,10 @@ function Home() {
   }, [refreshStarred])
 
   const saveProfile = useCallback(async () => {
-    const name = displayName || 'Alice'
+    const name = displayName.trim()
+    if (!name) return
     const { data } = await api.PATCH('/auth/me', { body: { display_name: name } })
     if (data) setUser(data as typeof user)
-    setDisplayName(name)
   }, [displayName, setUser])
 
   const refreshOrgs = useCallback(async () => {
@@ -205,11 +205,18 @@ function Home() {
     if (data) setOrgs(data as Array<{ id: string; name: string; slug: string }>)
   }, [])
 
+  const [orgName, setOrgName] = useState('')
+  const [orgSlug, setOrgSlug] = useState('')
+
   const createOrg = useCallback(async () => {
-    const slug = `o-${Math.random().toString(36).slice(2, 8)}`
-    await api.POST('/orgs', { body: { name: `Org ${slug}`, slug } })
+    const name = orgName.trim()
+    const slug = orgSlug.trim()
+    if (!name || !slug) return
+    await api.POST('/orgs', { body: { name, slug } })
+    setOrgName('')
+    setOrgSlug('')
     void refreshOrgs()
-  }, [refreshOrgs])
+  }, [orgName, orgSlug, refreshOrgs])
 
   const refreshTrash = useCallback(async () => {
     const { data } = await api.GET('/trash', {})
@@ -232,10 +239,9 @@ function Home() {
   }, [])
 
   const createWebhook = useCallback(async () => {
-    if (!webhookUrl) return
-    const { data } = await api.POST('/webhooks', {
-      body: { url: webhookUrl },
-    })
+    const url = webhookUrl.trim()
+    if (!url) return
+    const { data } = await api.POST('/webhooks', { body: { url } })
     if (data) {
       const d = data as { secret: string }
       setWebhookSecret(d.secret)
@@ -309,8 +315,15 @@ function Home() {
         <text className="Muted">share: {shareUrl}</text>
       ) : null}
       <text className="Muted">display_name: {user.display_name ?? '—'}</text>
+      <input
+        className="Input"
+        placeholder="your display name"
+        type="text"
+        value={displayName}
+        bindinput={(e: { detail: { value: string } }) => setDisplayName(e.detail.value)}
+      />
       <view className="Button ButtonGhost" bindtap={saveProfile}>
-        <text className="ButtonText">Save profile (sets "Alice")</text>
+        <text className="ButtonText">Save profile</text>
       </view>
       <view className="Button ButtonGhost" bindtap={refreshStarred}>
         <text className="ButtonText">Load starred ({starred.length})</text>
@@ -318,8 +331,22 @@ function Home() {
       <view className="Button ButtonGhost" bindtap={refreshOrgs}>
         <text className="ButtonText">Load orgs ({orgs.length})</text>
       </view>
+      <input
+        className="Input"
+        placeholder="Org name"
+        type="text"
+        value={orgName}
+        bindinput={(e: { detail: { value: string } }) => setOrgName(e.detail.value)}
+      />
+      <input
+        className="Input"
+        placeholder="slug (a-z0-9-)"
+        type="text"
+        value={orgSlug}
+        bindinput={(e: { detail: { value: string } }) => setOrgSlug(e.detail.value)}
+      />
       <view className="Button ButtonGhost" bindtap={createOrg}>
-        <text className="ButtonText">Create test org</text>
+        <text className="ButtonText">Create org</text>
       </view>
       {orgs.length > 0 ? (
         <view className="OrgList">
@@ -364,8 +391,15 @@ function Home() {
           ))}
         </view>
       ) : null}
+      <input
+        className="Input"
+        placeholder="https://your-host/hook"
+        type="url"
+        value={webhookUrl}
+        bindinput={(e: { detail: { value: string } }) => setWebhookUrl(e.detail.value)}
+      />
       <view className="Button" bindtap={createWebhook}>
-        <text className="ButtonText">Register webhook: {webhookUrl || '(set via devtools)'}</text>
+        <text className="ButtonText">Register webhook</text>
       </view>
       {webhookSecret ? (
         <text className="Muted">webhook secret (copy now, shown once): {webhookSecret}</text>
