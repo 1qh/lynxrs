@@ -78,6 +78,42 @@ pub struct QuotaDto {
     pub limit_bytes: i64,
 }
 
+#[derive(Deserialize, ToSchema, Validate)]
+pub struct RenameInput {
+    #[validate(length(min = 1, max = 255))]
+    pub filename: String,
+}
+
+#[utoipa::path(
+    patch,
+    path = "/files/{id}",
+    request_body = RenameInput,
+    responses((status = 200, body = FileDto), (status = 404))
+)]
+pub async fn rename(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+    Json(input): Json<RenameInput>,
+) -> Result<Json<FileDto>> {
+    input
+        .validate()
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let row = file_object::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if row.owner_id != uid {
+        return Err(AppError::NotFound);
+    }
+    let mut am: file_object::ActiveModel = row.into();
+    am.filename = Set(input.filename);
+    let updated = am.update(&state.db).await?;
+    Ok(Json(FileDto::from(updated)))
+}
+
 #[utoipa::path(get, path = "/me/quota", responses((status = 200, body = QuotaDto)))]
 pub async fn quota(
     State(state): State<AppState>,

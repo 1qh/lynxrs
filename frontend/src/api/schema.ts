@@ -257,7 +257,7 @@ export interface paths {
         delete: operations["delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["rename"];
         trace?: never;
     };
     "/files/{id}/shares": {
@@ -445,6 +445,9 @@ export interface components {
             limit_bytes: number;
             /** Format: int64 */
             used_bytes: number;
+        };
+        RenameInput: {
+            filename: string;
         };
         ResetPasswordInput: {
             new_password: string;
@@ -947,6 +950,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rename: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileDto"];
+                };
             };
             404: {
                 headers: {

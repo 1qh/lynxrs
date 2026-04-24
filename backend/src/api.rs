@@ -66,6 +66,7 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         files::FileList,
         files::FileShareDto,
         files::QuotaDto,
+        files::RenameInput,
         files::CreateShareInput,
         files::Base64UploadInput,
         events::EventMsg,
@@ -163,7 +164,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(files::upload_json))
         .routes(routes!(files::list))
         .routes(routes!(files::quota))
-        .routes(routes!(files::download))
+        .routes(routes!(files::download, files::rename))
         .routes(routes!(files::delete))
         .routes(routes!(files::create_share, files::list_shares))
         .routes(routes!(files::download_share))
