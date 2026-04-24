@@ -327,23 +327,61 @@ pub async fn download(
     }
 
     let obj_path = ObjPath::from(row.storage_key.clone());
-    let result = state.storage.get(&obj_path).await?;
-    let body = axum::body::Body::from_stream(result.into_stream());
+    let total = row.size_bytes as u64;
 
-    Ok((
-        [
-            (axum::http::header::CONTENT_TYPE, row.content_type.clone()),
-            (
+    if let Some(range_hdr) = headers.get(axum::http::header::RANGE)
+        && let Some((start, end)) = parse_range(range_hdr.to_str().unwrap_or(""), total)
+    {
+        let bytes = state
+            .storage
+            .get_range(&obj_path, start..end + 1)
+            .await?;
+        let len = bytes.len() as u64;
+        return Ok(axum::response::Response::builder()
+            .status(axum::http::StatusCode::PARTIAL_CONTENT)
+            .header(axum::http::header::CONTENT_TYPE, row.content_type.clone())
+            .header(
                 axum::http::header::CONTENT_DISPOSITION,
                 format!("attachment; filename=\"{}\"", row.filename),
-            ),
-            (
-                axum::http::header::CONTENT_LENGTH,
-                row.size_bytes.to_string(),
-            ),
-        ],
-        body,
-    ))
+            )
+            .header(axum::http::header::CONTENT_LENGTH, len.to_string())
+            .header(axum::http::header::ACCEPT_RANGES, "bytes")
+            .header(
+                axum::http::header::CONTENT_RANGE,
+                format!("bytes {start}-{end}/{total}"),
+            )
+            .body(axum::body::Body::from(bytes))
+            .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?);
+    }
+
+    let result = state.storage.get(&obj_path).await?;
+    let body = axum::body::Body::from_stream(result.into_stream());
+    Ok(axum::response::Response::builder()
+        .status(axum::http::StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, row.content_type.clone())
+        .header(
+            axum::http::header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{}\"", row.filename),
+        )
+        .header(axum::http::header::CONTENT_LENGTH, total.to_string())
+        .header(axum::http::header::ACCEPT_RANGES, "bytes")
+        .body(body)
+        .map_err(|e| AppError::Other(anyhow::anyhow!(e)))?)
+}
+
+fn parse_range(raw: &str, total: u64) -> Option<(u64, u64)> {
+    let rest = raw.strip_prefix("bytes=")?;
+    let (a, b) = rest.split_once('-')?;
+    let start: u64 = a.parse().ok()?;
+    let end: u64 = if b.is_empty() {
+        total - 1
+    } else {
+        b.parse().ok()?
+    };
+    if start > end || end >= total {
+        return None;
+    }
+    Some((start, end))
 }
 
 #[derive(Serialize, ToSchema)]
