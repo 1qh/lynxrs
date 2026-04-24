@@ -53,6 +53,7 @@ pub async fn ws_handler(
 }
 
 async fn handle_socket(socket: WebSocket, bus: EventBus) {
+    metrics::gauge!("simu_ws_connections").increment(1.0);
     let (mut tx, mut rx) = socket.split();
     let mut sub = bus.subscribe();
 
@@ -84,6 +85,7 @@ async fn handle_socket(socket: WebSocket, bus: EventBus) {
     }
 
     fwd.abort();
+    metrics::gauge!("simu_ws_connections").decrement(1.0);
 }
 
 pub fn router() -> Router<AppState> {
