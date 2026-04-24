@@ -461,11 +461,11 @@ pub async fn download_share(
         .ok_or(AppError::NotFound)?;
     let obj_path = ObjPath::from(row.storage_key.clone());
     let result = state.storage.get(&obj_path).await?;
-    let bytes = result.bytes().await?;
     let new_count = share.download_count + 1;
     let mut am: file_share::ActiveModel = share.into();
     am.download_count = Set(new_count);
     let _ = am.update(&state.db).await;
+    let body = axum::body::Body::from_stream(result.into_stream());
     Ok((
         [
             (axum::http::header::CONTENT_TYPE, row.content_type.clone()),
@@ -473,8 +473,9 @@ pub async fn download_share(
                 axum::http::header::CONTENT_DISPOSITION,
                 format!("attachment; filename=\"{}\"", row.filename),
             ),
+            (axum::http::header::CONTENT_LENGTH, row.size_bytes.to_string()),
         ],
-        bytes,
+        body,
     ))
 }
 
