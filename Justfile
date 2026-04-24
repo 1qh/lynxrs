@@ -99,7 +99,7 @@ sbom:
   docker save simu-backend:rolling -o /tmp/simu-backend.tar
   syft /tmp/simu-backend.tar -o spdx-json=docs/SBOM.spdx.json
   rm -f /tmp/simu-backend.tar
-  cd backend && cargo cyclonedx --format json
+  cd backend && cargo cyclonedx --format json --spec-version 1.5
   mv backend/simu-backend.cdx.json docs/SBOM.cdx.json
 
 load:
