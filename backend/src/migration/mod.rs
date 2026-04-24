@@ -15,6 +15,7 @@ mod m20260424_000012_mfa;
 mod m20260424_000013_webhooks;
 mod m20260424_000014_file_checksum;
 mod m20260424_000015_login_lockout;
+mod m20260424_000016_mfa_recovery;
 
 pub struct Migrator;
 
@@ -37,6 +38,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260424_000013_webhooks::Migration),
             Box::new(m20260424_000014_file_checksum::Migration),
             Box::new(m20260424_000015_login_lockout::Migration),
+            Box::new(m20260424_000016_mfa_recovery::Migration),
         ]
     }
 }

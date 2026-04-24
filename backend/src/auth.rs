@@ -294,7 +294,13 @@ pub async fn login(
         false
     } else if u.totp_enabled {
         let code = input.totp_code.as_deref().unwrap_or("");
-        !code.is_empty() && crate::mfa::verify_for(&u, code)?
+        if code.is_empty() {
+            false
+        } else if crate::mfa::verify_for(&u, code)? {
+            true
+        } else {
+            crate::mfa::consume_recovery(&state.db, u.id, code).await?
+        }
     } else {
         true
     };

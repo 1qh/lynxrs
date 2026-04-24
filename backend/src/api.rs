@@ -79,6 +79,7 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         audit::AuditDto,
         mfa::EnrollDto,
         mfa::MfaCodeInput,
+        mfa::RecoveryCodesDto,
         webhooks::WebhookDto,
         webhooks::WebhookCreated,
         webhooks::CreateWebhookInput,
@@ -200,6 +201,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(mfa::enroll))
         .routes(routes!(mfa::activate))
         .routes(routes!(mfa::disable))
+        .routes(routes!(mfa::generate_recovery_codes))
         .routes(routes!(webhooks::create_webhook, webhooks::list_webhooks))
         .routes(routes!(webhooks::revoke_webhook))
         .with_state(state.clone())
