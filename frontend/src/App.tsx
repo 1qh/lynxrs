@@ -116,6 +116,12 @@ function Home() {
   const [orgs, setOrgs] = useState<Array<{ id: string; name: string; slug: string }>>([])
   const [displayName, setDisplayName] = useState<string>(user.display_name ?? '')
   const [starred, setStarred] = useState<FileDto[]>([])
+  const [descEdit, setDescEdit] = useState<{ id: string; text: string } | null>(null)
+  const [orgDetail, setOrgDetail] = useState<null | {
+    id: string
+    stats?: { members: number; files: number; total_bytes: number }
+    members?: Array<{ email: string; role: string }>
+  }>(null)
 
   const refresh = useCallback(async () => {
     const { data } = await api.GET('/files', { params: { query: {} } })
@@ -183,6 +189,28 @@ function Home() {
     })
     if (error) { console.error('[share]', error); return }
     setShareUrl((data as { url: string }).url)
+  }, [])
+
+  const saveDescribe = useCallback(async () => {
+    if (!descEdit) return
+    await api.PATCH('/files/{id}/describe', {
+      params: { path: { id: descEdit.id } },
+      body: { description: descEdit.text },
+    })
+    setDescEdit(null)
+    void refresh()
+  }, [descEdit, refresh])
+
+  const openOrgDetail = useCallback(async (id: string) => {
+    const [stats, members] = await Promise.all([
+      api.GET('/orgs/{id}/stats', { params: { path: { id } } }),
+      api.GET('/orgs/{id}/members', { params: { path: { id } } }),
+    ])
+    setOrgDetail({
+      id,
+      stats: (stats.data as { members: number; files: number; total_bytes: number }) ?? undefined,
+      members: (members.data as Array<{ email: string; role: string }>) ?? [],
+    })
   }, [])
 
   const refreshStarred = useCallback(async () => {
@@ -323,8 +351,12 @@ function Home() {
             <view key={f.id} className="FileRow">
               <text className="FileName" bindtap={() => void share(f.id)}>{f.filename}</text>
               <text className="FileMeta">{f.size_bytes}B · {f.content_type}</text>
+              {f.description ? <text className="Muted">{f.description}</text> : null}
               <view className="Button ButtonGhost" bindtap={() => void toggleStar(f.id)}>
                 <text className="ButtonText">⭐</text>
+              </view>
+              <view className="Button ButtonGhost" bindtap={() => setDescEdit({ id: f.id, text: f.description ?? '' })}>
+                <text className="ButtonText">✎ describe</text>
               </view>
             </view>
           ))
@@ -367,11 +399,39 @@ function Home() {
       {orgs.length > 0 ? (
         <view className="OrgList">
           {orgs.map((o) => (
-            <view key={o.id} className="OrgRow">
+            <view key={o.id} className="OrgRow" bindtap={() => void openOrgDetail(o.id)}>
               <text className="FileName">{o.name}</text>
               <text className="Muted"> · {o.slug}</text>
             </view>
           ))}
+        </view>
+      ) : null}
+      {orgDetail ? (
+        <view className="OrgDetail">
+          <text className="Muted">
+            Org {orgDetail.id.slice(0, 8)}…
+            {orgDetail.stats
+              ? ` — members: ${orgDetail.stats.members}, files: ${orgDetail.stats.files}, bytes: ${orgDetail.stats.total_bytes}`
+              : ''}
+          </text>
+          {(orgDetail.members ?? []).map((m, i) => (
+            <text key={i} className="Muted">· {m.email} ({m.role})</text>
+          ))}
+        </view>
+      ) : null}
+      {descEdit ? (
+        <view className="DescEdit">
+          <input
+            className="Input"
+            placeholder="file description"
+            type="text"
+            bindinput={(e: { detail: { value: string } }) =>
+              setDescEdit({ id: descEdit.id, text: e.detail.value })
+            }
+          />
+          <view className="Button" bindtap={saveDescribe}>
+            <text className="ButtonText">Save description</text>
+          </view>
         </view>
       ) : null}
       <view className="Button ButtonGhost" bindtap={refreshTrash}>
