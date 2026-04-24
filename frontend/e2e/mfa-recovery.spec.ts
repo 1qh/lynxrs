@@ -1,10 +1,11 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 import * as OTPAuth from 'otpauth'
 
 const BACKEND = 'http://localhost:8088'
 
 test('MFA recovery code lets you log in without TOTP, and is single-use', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const email = `mfa-rec-${Date.now()}@t.local`
   const password = 'hunter2hunter2'
   await api.post('/api/auth/signup', {
@@ -31,7 +32,7 @@ test('MFA recovery code lets you log in without TOTP, and is single-use', async 
   expect(codes).toHaveLength(10)
 
   // Log in with a recovery code.
-  const anon = await pwRequest.newContext({ baseURL: BACKEND })
+  const anon = await newApi()
   const login1 = await anon.post('/api/auth/login', {
     data: { email, password, totp_code: codes[0] },
     headers: { 'content-type': 'application/json' },
@@ -39,7 +40,7 @@ test('MFA recovery code lets you log in without TOTP, and is single-use', async 
   expect(login1.status()).toBe(200)
 
   // Same code a second time → rejected.
-  const anon2 = await pwRequest.newContext({ baseURL: BACKEND })
+  const anon2 = await newApi()
   const login2 = await anon2.post('/api/auth/login', {
     data: { email, password, totp_code: codes[0] },
     headers: { 'content-type': 'application/json' },

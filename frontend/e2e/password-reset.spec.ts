@@ -1,10 +1,11 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const BACKEND = 'http://localhost:8088'
 const MAILPIT = 'http://localhost:8125'
 
 test('forgot → email → reset → login', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const email = `reset-${Date.now()}@example.com`
   const password = 'hunter2hunter2'
 
@@ -49,7 +50,7 @@ test('forgot → email → reset → login', async () => {
   expect(reset.status()).toBe(204)
 
   // fresh login with new password
-  const freshCtx = await pwRequest.newContext({ baseURL: BACKEND })
+  const freshCtx = await newApi()
   const login = await freshCtx.post('/api/auth/login', {
     data: { email, password: newPw },
     headers: { 'content-type': 'application/json' },
@@ -57,7 +58,7 @@ test('forgot → email → reset → login', async () => {
   expect(login.ok()).toBe(true)
 
   // old password should fail
-  const freshCtx2 = await pwRequest.newContext({ baseURL: BACKEND })
+  const freshCtx2 = await newApi()
   const badLogin = await freshCtx2.post('/api/auth/login', {
     data: { email, password },
     headers: { 'content-type': 'application/json' },

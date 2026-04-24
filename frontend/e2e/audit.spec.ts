@@ -1,9 +1,10 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const BACKEND = 'http://localhost:8088'
 
 test('audit log records signup + login', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const email = `audit-${Date.now()}@t.local`
   await api.post('/api/auth/signup', {
     data: { email, password: 'hunter2hunter2' },
@@ -23,13 +24,13 @@ test('audit log records signup + login', async () => {
 })
 
 test('audit log records failed login (by email)', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const email = `audit-fail-${Date.now()}@t.local`
   await api.post('/api/auth/signup', {
     data: { email, password: 'hunter2hunter2' },
     headers: { 'content-type': 'application/json' },
   })
-  const bad = await pwRequest.newContext({ baseURL: BACKEND })
+  const bad = await newApi()
   const r = await bad.post('/api/auth/login', {
     data: { email, password: 'wrong-wrong-wrong' },
     headers: { 'content-type': 'application/json' },

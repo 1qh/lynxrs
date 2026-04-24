@@ -1496,6 +1496,11 @@ export interface components {
         };
         UserDto: {
             avatar_url?: string | null;
+            /**
+             * @description Short-lived CSRF token; echo in X-CSRF-Token on mutating requests.
+             *     Also set as simu_csrf cookie (non-HttpOnly) for same-origin clients.
+             */
+            csrf_token?: string | null;
             display_name?: string | null;
             email: string;
             email_verified: boolean;

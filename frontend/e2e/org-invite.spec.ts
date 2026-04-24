@@ -1,10 +1,11 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const BACKEND = 'http://localhost:8088'
 
 test('org invite flow: create invite → preview → accept → membership visible', async () => {
-  const owner = await pwRequest.newContext({ baseURL: BACKEND })
-  const invitee = await pwRequest.newContext({ baseURL: BACKEND })
+  const owner = await newApi()
+  const invitee = await newApi()
   const ownerEmail = `inv-o-${Date.now()}@t.local`
   const inviteeEmail = `inv-i-${Date.now()}@t.local`
   await owner.post('/api/auth/signup', { data: { email: ownerEmail, password: 'hunter2hunter2' }, headers: { 'content-type': 'application/json' } })
@@ -25,7 +26,7 @@ test('org invite flow: create invite → preview → accept → membership visib
   const token = new URL(url).searchParams.get('token')!
 
   // Unauthenticated preview works
-  const anon = await pwRequest.newContext({ baseURL: BACKEND })
+  const anon = await newApi()
   const pv = await anon.get(`/api/invites/${token}`)
   expect(pv.status()).toBe(200)
   const preview = (await pv.json()) as { email: string }

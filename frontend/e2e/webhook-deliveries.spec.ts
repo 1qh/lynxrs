@@ -1,4 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 import http from 'node:http'
 
 const BACKEND = 'http://localhost:8088'
@@ -10,7 +11,7 @@ test('webhook deliveries are logged per attempt', async () => {
   await new Promise<void>((r) => server.listen(9892, r))
 
   try {
-    const api = await pwRequest.newContext({ baseURL: BACKEND })
+    const api = await newApi()
     const email = `whd-${Date.now()}@t.local`
     await api.post('/api/auth/signup', {
       data: { email, password: 'hunter2hunter2' },

@@ -1,9 +1,10 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const BACKEND = 'http://localhost:8088'
 
 test('API token create + use as Bearer + revoke', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const email = `token-e2e-${Date.now()}@example.com`
 
   await api.post('/api/auth/signup', {
@@ -21,14 +22,14 @@ test('API token create + use as Bearer + revoke', async () => {
   expect(body.plaintext).toMatch(/^simu_/)
 
   // Use bearer token — no cookies attached
-  const bareApi = await pwRequest.newContext({ baseURL: BACKEND })
+  const bareApi = await newApi()
   const listRes = await bareApi.get('/api/files', {
     headers: { Authorization: `Bearer ${body.plaintext}` },
   })
   expect(listRes.status()).toBe(200)
 
   // Without auth → 401
-  const naked = await pwRequest.newContext({ baseURL: BACKEND })
+  const naked = await newApi()
   const unauth = await naked.get('/api/files')
   expect(unauth.status()).toBe(401)
 
@@ -44,7 +45,7 @@ test('API token create + use as Bearer + revoke', async () => {
 })
 
 test('bearer token works on upload + download flow (no cookie)', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const email = `token-upload-${Date.now()}@example.com`
   await api.post('/api/auth/signup', {
     data: { email, password: 'hunter2hunter2' },
@@ -58,7 +59,7 @@ test('bearer token works on upload + download flow (no cookie)', async () => {
   ).json()) as { plaintext: string }
   const token = created.plaintext
 
-  const bare = await pwRequest.newContext({ baseURL: BACKEND })
+  const bare = await newApi()
 
   const up = await bare.post('/api/files/json', {
     data: {

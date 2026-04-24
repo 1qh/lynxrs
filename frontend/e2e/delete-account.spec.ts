@@ -1,9 +1,10 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const BACKEND = 'http://localhost:8088'
 
 test('DELETE /api/auth/me permanently removes the user', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const email = `delete-${Date.now()}@example.com`
   const password = 'hunter2hunter2'
 
@@ -20,7 +21,7 @@ test('DELETE /api/auth/me permanently removes the user', async () => {
   expect(me.status()).toBe(401)
 
   // login → 401 (user gone)
-  const fresh = await pwRequest.newContext({ baseURL: BACKEND })
+  const fresh = await newApi()
   const login = await fresh.post('/api/auth/login', {
     data: { email, password },
     headers: { 'content-type': 'application/json' },

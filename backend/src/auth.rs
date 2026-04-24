@@ -50,6 +50,10 @@ pub struct UserDto {
     pub totp_enabled: bool,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
+    /// Short-lived CSRF token; echo in X-CSRF-Token on mutating requests.
+    /// Also set as simu_csrf cookie (non-HttpOnly) for same-origin clients.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub csrf_token: Option<String>,
 }
 
 impl From<user::Model> for UserDto {
@@ -62,6 +66,7 @@ impl From<user::Model> for UserDto {
             totp_enabled: m.totp_enabled,
             display_name: m.display_name,
             avatar_url: m.avatar_url,
+            csrf_token: None,
         }
     }
 }
@@ -195,8 +200,13 @@ pub async fn signup(
     }
 
     crate::audit::record(&state.db, Some(u.id), "signup", Some(&headers), serde_json::json!({})).await;
-    let jar = jar.add(issue_cookie(u.id, u.session_version)).add(issue_csrf_cookie());
-    Ok((StatusCode::CREATED, jar, Json(UserDto::from(u))))
+    let (csrf, csrf_c) = issue_csrf_pair();
+    let jar = jar.add(issue_cookie(u.id, u.session_version));
+    let mut dto = UserDto::from(u);
+    dto.csrf_token = Some(csrf);
+    let mut resp = (StatusCode::CREATED, jar, Json(dto)).into_response();
+    resp.headers_mut().append(axum::http::header::SET_COOKIE, csrf_set_cookie_header(&csrf_c));
+    Ok(resp)
 }
 
 async fn enqueue_email_verification(
@@ -308,7 +318,7 @@ pub async fn login(
     headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
     Json(input): Json<LoginInput>,
-) -> Result<impl IntoResponse> {
+) -> Result<axum::response::Response> {
     input
         .validate()
         .map_err(|e| AppError::Validation(e.to_string()))?;
@@ -378,15 +388,25 @@ pub async fn login(
         am.updated_at = Set(chrono::Utc::now());
         let _ = am.update(&state.db).await;
         crate::audit::record(&state.db, Some(uid_copy), "login", Some(&headers), serde_json::json!({})).await;
-        let jar = jar.add(issue_cookie(uid_copy, sv)).add(issue_csrf_cookie());
-        return Ok((jar, Json(UserDto::from(u))));
+        let (csrf, csrf_c) = issue_csrf_pair();
+        let jar = jar.add(issue_cookie(uid_copy, sv));
+        let mut dto = UserDto::from(u);
+        dto.csrf_token = Some(csrf);
+        let mut resp = (jar, Json(dto)).into_response();
+        resp.headers_mut().append(axum::http::header::SET_COOKIE, csrf_set_cookie_header(&csrf_c));
+        return Ok(resp);
     }
 
     crate::audit::record(&state.db, Some(u.id), "login", Some(&headers), serde_json::json!({})).await;
     metrics::counter!("simu_login_success_total").increment(1);
     maybe_notify_new_ip(&state, &u, &headers).await;
-    let jar = jar.add(issue_cookie(u.id, u.session_version)).add(issue_csrf_cookie());
-    Ok((jar, Json(UserDto::from(u))))
+    let (csrf, csrf_c) = issue_csrf_pair();
+    let jar = jar.add(issue_cookie(u.id, u.session_version));
+    let mut dto = UserDto::from(u);
+    dto.csrf_token = Some(csrf);
+    let mut resp = (jar, Json(dto)).into_response();
+    resp.headers_mut().append(axum::http::header::SET_COOKIE, csrf_set_cookie_header(&csrf_c));
+    Ok(resp)
 }
 
 async fn maybe_notify_new_ip(state: &AppState, u: &user::Model, headers: &axum::http::HeaderMap) {
@@ -436,13 +456,18 @@ pub async fn me(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     jar: PrivateCookieJar,
-) -> Result<Json<UserDto>> {
+) -> Result<axum::response::Response> {
     let uid = authenticate(&state, &headers, &jar).await?;
     let u = user::Entity::find_by_id(uid)
         .one(&state.db)
         .await?
         .ok_or(AppError::Unauthorized)?;
-    Ok(Json(UserDto::from(u)))
+    let (csrf, csrf_c) = issue_csrf_pair();
+    let mut dto = UserDto::from(u);
+    dto.csrf_token = Some(csrf);
+    let mut resp = Json(dto).into_response();
+    resp.headers_mut().append(axum::http::header::SET_COOKIE, csrf_set_cookie_header(&csrf_c));
+    Ok(resp)
 }
 
 #[utoipa::path(delete, path = "/auth/me", responses((status = 204), (status = 401)))]
@@ -588,14 +613,29 @@ fn random_csrf_token() -> String {
 }
 
 pub fn issue_csrf_cookie() -> Cookie<'static> {
+    issue_csrf_pair().1
+}
+
+/// Build a non-signed cookie directly; PrivateCookieJar would encrypt the value
+/// and break the double-submit string compare. We build a plain cookie and
+/// attach via Set-Cookie header directly (see `csrf_set_cookie_header`).
+pub fn issue_csrf_pair() -> (String, Cookie<'static>) {
     let v = random_csrf_token();
-    Cookie::build((CSRF_COOKIE, v))
-        .http_only(false) // readable by JS so client can echo into header
+    let c = Cookie::build((CSRF_COOKIE, v.clone()))
+        .http_only(false)
         .same_site(SameSite::Lax)
         .secure(false)
         .path("/")
         .max_age(time::Duration::days(30))
-        .build()
+        .build();
+    (v, c)
+}
+
+/// Serialize the csrf cookie to a Set-Cookie header value. Use this instead of
+/// `jar.add()` when you need the cookie value to be the raw plaintext (for
+/// double-submit CSRF).
+pub fn csrf_set_cookie_header(c: &Cookie<'static>) -> axum::http::HeaderValue {
+    axum::http::HeaderValue::from_str(&c.to_string()).expect("valid cookie")
 }
 
 /// Middleware: double-submit CSRF for cookie-auth mutating requests.
@@ -605,7 +645,7 @@ pub async fn csrf_enforce(
     next: axum::middleware::Next,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
-    if std::env::var("CSRF_ENFORCE").ok().as_deref() != Some("1") {
+    if std::env::var("CSRF_ENFORCE").ok().as_deref() == Some("0") {
         return next.run(req).await;
     }
     let method = req.method().clone();

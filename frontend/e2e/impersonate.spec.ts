@@ -1,4 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 import { execSync } from 'node:child_process'
 
 const BACKEND = 'http://localhost:8088'
@@ -11,7 +12,7 @@ test('admin impersonation issues session as target user', async () => {
     `env $(cat /Users/o/simu/backend/.env | xargs) /Users/o/simu/backend/target/release/simu-admin create --email ${adminEmail} --password ${pw}`,
     { stdio: 'pipe' },
   )
-  const admin = await pwRequest.newContext({ baseURL: BACKEND })
+  const admin = await newApi()
   const login = await admin.post('/api/auth/login', {
     data: { email: adminEmail, password: pw },
     headers: { 'content-type': 'application/json' },
@@ -20,7 +21,7 @@ test('admin impersonation issues session as target user', async () => {
 
   // Create a target user via signup.
   const targetEmail = `tgt-imp-${Date.now()}@t.local`
-  const target = await pwRequest.newContext({ baseURL: BACKEND })
+  const target = await newApi()
   const sres = await target.post('/api/auth/signup', {
     data: { email: targetEmail, password: pw },
     headers: { 'content-type': 'application/json' },

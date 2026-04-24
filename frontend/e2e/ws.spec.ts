@@ -1,9 +1,10 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const BACKEND = 'http://localhost:8088'
 
 test('websocket receives FileCreated broadcast after upload', async ({ browser }) => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const email = `ws-${Date.now()}@example.com`
   const password = 'hunter2hunter2'
 

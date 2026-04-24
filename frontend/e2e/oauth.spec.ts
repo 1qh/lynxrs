@@ -1,4 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 import http from 'node:http'
 
 const BACKEND = 'http://localhost:8088'
@@ -8,7 +9,7 @@ test('OAuth flow with mock provider creates a new account and issues session', a
   // at the mock server launched below. The default backend (without those env
   // vars) returns 400 "OAuth not configured" — which we assert as the status
   // endpoint behavior, so we only run the full flow when configured.
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const statusRes = await api.get('/api/auth/oauth/status')
   expect(statusRes.status()).toBe(200)
   const status = (await statusRes.json()) as { google: boolean }

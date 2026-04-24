@@ -1,9 +1,10 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const BACKEND = 'http://localhost:8088'
 
 test('account locks after 5 failed logins', async () => {
-  const anon = await pwRequest.newContext({ baseURL: BACKEND })
+  const anon = await newApi()
   const email = `lock-${Date.now()}@t.local`
   const pw = 'hunter2hunter2'
 

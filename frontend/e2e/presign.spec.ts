@@ -1,9 +1,10 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const BACKEND = 'http://localhost:8088'
 
 test('GET /files/{id}/presign returns a working S3 URL', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const email = `pre-${Date.now()}@t.local`
   await api.post('/api/auth/signup', {
     data: { email, password: 'hunter2hunter2' },
@@ -26,7 +27,7 @@ test('GET /files/{id}/presign returns a working S3 URL', async () => {
   expect(expires_in_seconds).toBeGreaterThan(0)
 
   // Anonymous GET with the presigned URL must work.
-  const anon = await pwRequest.newContext()
+  const anon = await newApi()
   const fetched = await anon.get(url)
   expect(fetched.status()).toBe(200)
   expect(await fetched.text()).toBe('presigned!')

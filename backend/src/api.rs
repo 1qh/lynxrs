@@ -389,6 +389,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
             axum::http::header::AUTHORIZATION,
             axum::http::header::COOKIE,
             HeaderName::from_static("x-request-id"),
+            HeaderName::from_static("x-csrf-token"),
         ])
         .allow_methods([
             axum::http::Method::GET,

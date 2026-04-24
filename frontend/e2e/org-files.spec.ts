@@ -1,11 +1,12 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const BACKEND = 'http://localhost:8088'
 
 test('org-scoped upload is visible to other org members; non-members see 404', async () => {
-  const owner = await pwRequest.newContext({ baseURL: BACKEND })
-  const member = await pwRequest.newContext({ baseURL: BACKEND })
-  const stranger = await pwRequest.newContext({ baseURL: BACKEND })
+  const owner = await newApi()
+  const member = await newApi()
+  const stranger = await newApi()
   const ownerEmail = `org-own-${Date.now()}@t.local`
   const memberEmail = `org-mbr-${Date.now()}@t.local`
   await owner.post('/api/auth/signup', { data: { email: ownerEmail, password: 'hunter2hunter2' }, headers: { 'content-type': 'application/json' } })

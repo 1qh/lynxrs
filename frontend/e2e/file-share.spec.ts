@@ -1,9 +1,10 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const BACKEND = 'http://localhost:8088'
 
 test('file share: create → public download → revoke → 400', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const email = `share-e2e-${Date.now()}@example.com`
 
   await api.post('/api/auth/signup', {
@@ -30,7 +31,7 @@ test('file share: create → public download → revoke → 400', async () => {
   const share = (await shareRes.json()) as { id: string; url: string }
   const token = share.url.split('/').pop()!
 
-  const anon = await pwRequest.newContext({ baseURL: BACKEND })
+  const anon = await newApi()
   const pub = await anon.get(`/api/shares/${token}`)
   expect(pub.status()).toBe(200)
   expect(await pub.text()).toBe('hello share')

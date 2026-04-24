@@ -1,9 +1,10 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const BACKEND = 'http://localhost:8088'
 
 test('download supports HTTP Range → 206 Partial Content', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const email = `range-${Date.now()}@t.local`
   await api.post('/api/auth/signup', {
     data: { email, password: 'hunter2hunter2' },

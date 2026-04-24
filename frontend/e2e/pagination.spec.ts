@@ -1,9 +1,10 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const BACKEND = 'http://localhost:8088'
 
 test('/api/files cursor pagination walks backwards through history', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const email = `paginate-${Date.now()}@example.com`
   await api.post('/api/auth/signup', {
     data: { email, password: 'hunter2hunter2' },

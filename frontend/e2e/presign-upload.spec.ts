@@ -1,9 +1,10 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const BACKEND = 'http://localhost:8088'
 
 test('presigned PUT upload — direct-to-S3, then confirm', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const email = `pu-${Date.now()}@t.local`
   await api.post('/api/auth/signup', {
     data: { email, password: 'hunter2hunter2' },
@@ -23,7 +24,7 @@ test('presigned PUT upload — direct-to-S3, then confirm', async () => {
   const { file_id, put_url } = (await presign.json()) as { file_id: string; put_url: string }
 
   // Anonymous PUT direct to S3.
-  const anon = await pwRequest.newContext()
+  const anon = await newApi()
   const put = await anon.fetch(put_url, {
     method: 'PUT',
     data: body,

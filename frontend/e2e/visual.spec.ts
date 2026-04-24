@@ -1,4 +1,5 @@
 import { test, expect, type Page, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const PREVIEW = '/__web_preview?casename=main.web.bundle'
 
@@ -45,7 +46,7 @@ test('visual regression: boot landing', async ({ page }) => {
 
 test('visual regression: home after signup', async ({ browser }) => {
   // Pre-signup via HTTP so the Lynx app lands on Home on /me bootstrap.
-  const api = await pwRequest.newContext({ baseURL: 'http://localhost:8088' })
+  const api = await newApi()
   const email = `visual-home-${Date.now()}@example.com`
   const res = await api.post('/api/auth/signup', {
     data: { email, password: 'hunter2hunter2' },

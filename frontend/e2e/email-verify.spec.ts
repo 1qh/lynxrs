@@ -1,10 +1,11 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const BACKEND = 'http://localhost:8088'
 const MAILPIT = 'http://localhost:8125'
 
 test('signup auto-sends verification email; verify endpoint marks user verified', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const email = `verify-${Date.now()}@example.com`
 
   const signup = await api.post('/api/auth/signup', {

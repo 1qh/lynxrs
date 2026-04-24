@@ -1,10 +1,11 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 import * as OTPAuth from 'otpauth'
 
 const BACKEND = 'http://localhost:8088'
 
 test('MFA enroll → activate → login requires code → disable', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const email = `mfa-${Date.now()}@t.local`
   const password = 'hunter2hunter2'
   await api.post('/api/auth/signup', {
@@ -34,7 +35,7 @@ test('MFA enroll → activate → login requires code → disable', async () => 
   expect(activate.status()).toBe(204)
 
   // Login without code → 401
-  const anon1 = await pwRequest.newContext({ baseURL: BACKEND })
+  const anon1 = await newApi()
   const bad = await anon1.post('/api/auth/login', {
     data: { email, password },
     headers: { 'content-type': 'application/json' },
@@ -42,7 +43,7 @@ test('MFA enroll → activate → login requires code → disable', async () => 
   expect(bad.status()).toBe(401)
 
   // Login with code → 200
-  const anon2 = await pwRequest.newContext({ baseURL: BACKEND })
+  const anon2 = await newApi()
   const good = await anon2.post('/api/auth/login', {
     data: { email, password, totp_code: totp.generate() },
     headers: { 'content-type': 'application/json' },

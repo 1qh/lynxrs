@@ -338,7 +338,6 @@ function Home() {
         className="Input"
         placeholder="your display name"
         type="text"
-        value={displayName}
         bindinput={(e: { detail: { value: string } }) => setDisplayName(e.detail.value)}
       />
       <view className="Button ButtonGhost" bindtap={saveProfile}>
@@ -354,14 +353,12 @@ function Home() {
         className="Input"
         placeholder="Org name"
         type="text"
-        value={orgName}
         bindinput={(e: { detail: { value: string } }) => setOrgName(e.detail.value)}
       />
       <input
         className="Input"
         placeholder="slug (a-z0-9-)"
         type="text"
-        value={orgSlug}
         bindinput={(e: { detail: { value: string } }) => setOrgSlug(e.detail.value)}
       />
       <view className="Button ButtonGhost" bindtap={createOrg}>
@@ -413,8 +410,7 @@ function Home() {
       <input
         className="Input"
         placeholder="https://your-host/hook"
-        type="url"
-        value={webhookUrl}
+        type="text"
         bindinput={(e: { detail: { value: string } }) => setWebhookUrl(e.detail.value)}
       />
       <view className="Button" bindtap={createWebhook}>
@@ -449,7 +445,6 @@ function Home() {
                 className="Input"
                 placeholder="6-digit code"
                 type="text"
-                value={mfaCode}
                 bindinput={(e: { detail: { value: string } }) => setMfaCode(e.detail.value)}
               />
               <view className="Button" bindtap={mfaActivate}>

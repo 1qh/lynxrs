@@ -1,9 +1,10 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const BACKEND = 'http://localhost:8088'
 
 test('file describe + move to org + move back to personal', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const email = `dm-${Date.now()}@t.local`
   await api.post('/api/auth/signup', {
     data: { email, password: 'hunter2hunter2' },

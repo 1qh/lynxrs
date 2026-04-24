@@ -1,10 +1,11 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const BACKEND = 'http://localhost:8088'
 
 test('orgs: create → list → invite member → list members → remove', async () => {
-  const owner = await pwRequest.newContext({ baseURL: BACKEND })
-  const member = await pwRequest.newContext({ baseURL: BACKEND })
+  const owner = await newApi()
+  const member = await newApi()
   const ownerEmail = `own-${Date.now()}@t.local`
   const memberEmail = `mbr-${Date.now()}@t.local`
   await owner.post('/api/auth/signup', {
@@ -37,7 +38,7 @@ test('orgs: create → list → invite member → list members → remove', asyn
   expect(members.map((m) => m.email).sort()).toEqual([memberEmail, ownerEmail].sort())
 
   // Non-member cannot list
-  const stranger = await pwRequest.newContext({ baseURL: BACKEND })
+  const stranger = await newApi()
   await stranger.post('/api/auth/signup', {
     data: { email: `stranger-${Date.now()}@t.local`, password: 'hunter2hunter2' },
     headers: { 'content-type': 'application/json' },

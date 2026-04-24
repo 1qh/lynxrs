@@ -1,15 +1,16 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 
 const BACKEND = 'http://localhost:8088'
 
-async function signup(api: Awaited<ReturnType<typeof pwRequest.newContext>>) {
+async function signup(api: Awaited<ReturnType<typeof newApi>>) {
   await api.post('/api/auth/signup', {
     data: { email: `sr-${Date.now()}-${Math.random()}@t.local`, password: 'hunter2hunter2' },
     headers: { 'content-type': 'application/json' },
   })
 }
 
-async function upload(api: Awaited<ReturnType<typeof pwRequest.newContext>>, filename: string) {
+async function upload(api: Awaited<ReturnType<typeof newApi>>, filename: string) {
   const res = await api.post('/api/files/json', {
     data: { filename, content_type: 'text/plain', data_base64: 'aGk=' },
     headers: { 'content-type': 'application/json' },
@@ -18,7 +19,7 @@ async function upload(api: Awaited<ReturnType<typeof pwRequest.newContext>>, fil
 }
 
 test('file search filters by filename (case-insensitive)', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   await signup(api)
   await upload(api, 'alpha.txt')
   await upload(api, 'beta.txt')
@@ -32,7 +33,7 @@ test('file search filters by filename (case-insensitive)', async () => {
 })
 
 test('file rename updates filename', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   await signup(api)
   const f = await upload(api, 'orig.txt')
 

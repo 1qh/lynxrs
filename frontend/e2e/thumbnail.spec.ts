@@ -1,4 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { newApi } from './_api'
 import { deflateSync } from 'node:zlib'
 
 const BACKEND = 'http://localhost:8088'
@@ -35,7 +36,7 @@ function makeRedPng(w = 16, h = 16): Buffer {
 }
 
 test('uploading an image produces a thumbnail served as JPEG', async () => {
-  const api = await pwRequest.newContext({ baseURL: BACKEND })
+  const api = await newApi()
   const email = `thumb-${Date.now()}@t.local`
   await api.post('/api/auth/signup', {
     data: { email, password: 'hunter2hunter2' },
