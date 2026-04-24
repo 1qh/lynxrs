@@ -4,6 +4,7 @@ pub mod email_verification;
 pub mod file_object;
 pub mod mfa_recovery;
 pub mod file_share;
+pub mod file_version;
 pub mod password_reset;
 pub mod user;
 pub mod webhook;

@@ -70,6 +70,7 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         files::VerifyDto,
         files::TagInput,
         files::PresignedDto,
+        files::VersionDto,
         files::CreateShareInput,
         files::Base64UploadInput,
         events::EventMsg,
@@ -191,6 +192,8 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(files::quota))
         .routes(routes!(files::verify))
         .routes(routes!(files::presign))
+        .routes(routes!(files::list_versions, files::create_version))
+        .routes(routes!(files::restore_version))
         .routes(routes!(files::list_trash, files::empty_trash))
         .routes(routes!(files::restore))
         .routes(routes!(files::purge))
