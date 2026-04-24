@@ -3,6 +3,7 @@
 // Ramps a cohort of users through signup → me → list. Safe to run against dev.
 
 import http from 'k6/http'
+import encoding from 'k6/encoding'
 import { check, sleep } from 'k6'
 
 export const options = {
@@ -36,6 +37,34 @@ export default function () {
 
   const list = http.get(`${BASE}/api/files`, { jar })
   check(list, { 'list 200': (r) => r.status === 200 })
+
+  // Upload
+  const data = encoding.b64encode('hello k6 load'.repeat(32))
+  const upload = http.post(
+    `${BASE}/api/files/json`,
+    JSON.stringify({ filename: `k6-${__VU}-${__ITER}.txt`, content_type: 'text/plain', data_base64: data }),
+    { headers: { 'Content-Type': 'application/json' }, jar },
+  )
+  check(upload, { 'upload 201': (r) => r.status === 201 })
+  const fid = upload.json('id')
+
+  const head = http.request('HEAD', `${BASE}/api/files/${fid}`, null, { jar })
+  check(head, { 'head 200': (r) => r.status === 200 })
+
+  const presign = http.get(`${BASE}/api/files/${fid}/presign`, { jar })
+  check(presign, { 'presign 200': (r) => r.status === 200 })
+
+  http.post(`${BASE}/api/files/${fid}/tags`, JSON.stringify({ tag: 'load' }),
+    { headers: { 'Content-Type': 'application/json' }, jar })
+  const stats = http.get(`${BASE}/api/me/stats`, { jar })
+  check(stats, { 'stats 200': (r) => r.status === 200 })
+
+  const share = http.post(
+    `${BASE}/api/files/${fid}/shares`,
+    JSON.stringify({}),
+    { headers: { 'Content-Type': 'application/json' }, jar },
+  )
+  check(share, { 'share 201': (r) => r.status === 201 })
 
   const logout = http.post(`${BASE}/api/auth/logout`, null, { jar })
   check(logout, { 'logout 204': (r) => r.status === 204 })
