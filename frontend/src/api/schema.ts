@@ -815,6 +815,7 @@ export interface components {
             name: string;
             /** Format: date-time */
             revoked_at?: string | null;
+            scope: string;
         };
         AuditDto: {
             action: string;
@@ -871,6 +872,7 @@ export interface components {
         };
         CreateTokenInput: {
             name: string;
+            scope?: string;
         };
         CreateWebhookInput: {
             url: string;

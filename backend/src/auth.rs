@@ -575,6 +575,35 @@ pub async fn authenticate(
     current_user_id(state, jar).await
 }
 
+/// Middleware: if the request bears `Authorization: Bearer simu_*`, look up the token's scope
+/// and reject mutating methods (POST/PUT/PATCH/DELETE) when the scope is "read".
+pub async fn token_scope_enforce(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let method = req.method().clone();
+    let is_mutating = !matches!(method.as_str(), "GET" | "HEAD" | "OPTIONS");
+    if is_mutating
+        && let Some(hdr) = req.headers().get(axum::http::header::AUTHORIZATION)
+        && let Ok(s) = hdr.to_str()
+        && let Some(token) = s.strip_prefix("Bearer ")
+    {
+        let token_hash = hex::encode(sha2::Sha256::digest(token.as_bytes()));
+        use crate::entity::api_token;
+        if let Ok(Some(row)) = api_token::Entity::find()
+            .filter(api_token::Column::TokenHash.eq(&token_hash))
+            .one(&state.db)
+            .await
+            && row.scope == "read"
+        {
+            return AppError::Unauthorized.into_response();
+        }
+    }
+    next.run(req).await
+}
+
 /// Cookie-only parse — used rarely (e.g., WS upgrade before DB access). Does NOT verify version.
 pub fn current_user_id_unchecked(jar: &PrivateCookieJar) -> Result<Uuid> {
     jar.get(SESSION_COOKIE)

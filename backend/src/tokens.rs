@@ -20,6 +20,7 @@ use crate::{
 pub struct ApiTokenDto {
     pub id: Uuid,
     pub name: String,
+    pub scope: String,
     pub last_used_at: Option<chrono::DateTime<chrono::Utc>>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub revoked_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -30,6 +31,7 @@ impl From<api_token::Model> for ApiTokenDto {
         Self {
             id: m.id,
             name: m.name,
+            scope: m.scope,
             last_used_at: m.last_used_at,
             created_at: m.created_at,
             revoked_at: m.revoked_at,
@@ -48,7 +50,11 @@ pub struct ApiTokenCreated {
 pub struct CreateTokenInput {
     #[validate(length(min = 1, max = 120))]
     pub name: String,
+    #[serde(default = "default_scope")]
+    pub scope: String,
 }
+
+fn default_scope() -> String { "full".into() }
 
 fn sha256_hex(value: &str) -> String {
     let digest = Sha256::digest(value.as_bytes());
@@ -82,6 +88,10 @@ pub async fn create_token(
 
     let plaintext = random_plaintext_token();
     let token_hash = sha256_hex(&plaintext);
+    let scope = match input.scope.as_str() {
+        "read" | "write" | "full" => input.scope,
+        _ => return Err(AppError::BadRequest("scope must be read|write|full".into())),
+    };
 
     let model = api_token::ActiveModel {
         id: Set(Uuid::now_v7()),
@@ -91,6 +101,7 @@ pub async fn create_token(
         last_used_at: Set(None),
         created_at: Set(chrono::Utc::now()),
         revoked_at: Set(None),
+        scope: Set(scope),
     }
     .insert(&state.db)
     .await?;

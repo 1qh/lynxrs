@@ -13,6 +13,7 @@ pub struct Model {
     pub last_used_at: Option<ChronoDateTimeUtc>,
     pub created_at: ChronoDateTimeUtc,
     pub revoked_at: Option<ChronoDateTimeUtc>,
+    pub scope: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -290,10 +290,12 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
             .build_pair();
 
         let ready_state = state.clone();
+        let scope_state = state.clone();
         let limited = Router::new()
             .nest("/api", api_router)
             .nest("/api", oauth::router().with_state(state.clone()))
             .merge(events::router().with_state(state))
+            .layer(axum::middleware::from_fn_with_state(scope_state, auth::token_scope_enforce))
             .layer(GovernorLayer::new(governor_conf).error_handler(|err| {
                 use axum::response::IntoResponse;
                 let (status, code) = match err {

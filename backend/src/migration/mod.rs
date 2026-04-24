@@ -22,6 +22,7 @@ mod m20260424_000019_webhook_deliveries;
 mod m20260424_000020_file_versions;
 mod m20260424_000021_share_password;
 mod m20260424_000022_user_profile;
+mod m20260424_000023_token_scopes;
 
 pub struct Migrator;
 
@@ -51,6 +52,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260424_000020_file_versions::Migration),
             Box::new(m20260424_000021_share_password::Migration),
             Box::new(m20260424_000022_user_profile::Migration),
+            Box::new(m20260424_000023_token_scopes::Migration),
         ]
     }
 }
