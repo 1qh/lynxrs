@@ -819,6 +819,8 @@ export interface operations {
                 limit?: number | null;
                 /** @description Cursor = most-recently-seen `created_at` RFC3339 timestamp. Returns rows strictly older. */
                 cursor?: string | null;
+                /** @description Case-insensitive filename substring filter. */
+                q?: string | null;
             };
             header?: never;
             path?: never;
