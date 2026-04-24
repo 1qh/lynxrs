@@ -1499,7 +1499,13 @@ pub async fn delete_comment(
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let c = file_comment::Entity::find_by_id(id)
         .one(&state.db).await?.ok_or(AppError::NotFound)?;
-    if c.file_id != file_id || c.user_id != uid {
+    if c.file_id != file_id {
+        return Err(AppError::NotFound);
+    }
+    let file = file_object::Entity::find_by_id(file_id)
+        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+    // Delete allowed if: user authored the comment OR owns the file.
+    if c.user_id != uid && file.owner_id != uid {
         return Err(AppError::NotFound);
     }
     file_comment::Entity::delete_by_id(id).exec(&state.db).await?;
