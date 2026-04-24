@@ -15,7 +15,7 @@ use axum_extra::extract::{
     PrivateCookieJar,
     cookie::{Cookie, SameSite},
 };
-use rand::Rng;
+use rand::prelude::*;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde::Deserialize;
 use uuid::Uuid;

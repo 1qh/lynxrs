@@ -1,7 +1,7 @@
 use axum::{Json, extract::{Path, State}, http::HeaderMap, http::StatusCode};
 use axum_extra::extract::PrivateCookieJar;
-use hmac::{Hmac, Mac};
-use rand::Rng;
+use hmac::{Hmac, KeyInit, Mac};
+use rand::prelude::*;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;

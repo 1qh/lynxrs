@@ -6,7 +6,7 @@ use totp_rs::{Algorithm, Secret, TOTP};
 use utoipa::ToSchema;
 
 use crate::{entity::{mfa_recovery, user}, error::{AppError, Result}, state::AppState};
-use rand::Rng;
+use rand::prelude::*;
 use sea_orm::{ColumnTrait, QueryFilter};
 use sha2::Digest;
 
