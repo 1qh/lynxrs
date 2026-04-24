@@ -79,11 +79,14 @@ chrono = { version = "=0.4.38", features = ["serde"] }
 dotenvy = "=0.15.7"
 hex = "=0.4.3"
 sha2 = "=0.10.8"
+hmac = "=0.12.1"
 bytes = "=1.11.1"
 base64 = "=0.22.1"
 async-trait = "=0.1.89"
 futures = "=0.3.31"
 totp-rs = { version = "=5.7.1", features = ["gen_secret", "otpauth"] }
+rand = "=0.9.1"
+reqwest = { version = "=0.12.12", features = ["json", "rustls-tls"], default-features = false }
 
 [dev-dependencies]
 tokio = { version = "=1.51.1", features = ["macros", "rt-multi-thread", "test-util"] }

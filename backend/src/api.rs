@@ -47,7 +47,7 @@ use tracing::Level;
 use utoipa::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::{admin, audit, auth, error::ErrorBody, events, files, mfa, state::AppState, tokens};
+use crate::{admin, audit, auth, error::ErrorBody, events, files, mfa, state::AppState, tokens, webhooks};
 
 const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
 
@@ -78,6 +78,9 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         audit::AuditDto,
         mfa::EnrollDto,
         mfa::MfaCodeInput,
+        webhooks::WebhookDto,
+        webhooks::WebhookCreated,
+        webhooks::CreateWebhookInput,
     )),
     tags((name = "simu", description = "Simu SaaS API"))
 )]
@@ -181,6 +184,8 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(mfa::enroll))
         .routes(routes!(mfa::activate))
         .routes(routes!(mfa::disable))
+        .routes(routes!(webhooks::create, webhooks::list))
+        .routes(routes!(webhooks::revoke))
         .with_state(state.clone())
         .split_for_parts();
 

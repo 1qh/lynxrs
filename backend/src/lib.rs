@@ -16,4 +16,5 @@ pub mod migration;
 pub mod state;
 pub mod telemetry;
 pub mod tokens;
+pub mod webhooks;
 pub mod api;
