@@ -5,7 +5,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::entity::{audit_event, email_verification, file_object, password_reset};
+use crate::entity::{audit_event, email_verification, file_object, password_reset, webhook_delivery};
 
 /// Spawn a task that periodically deletes expired/used tokens.
 pub fn spawn(
@@ -70,12 +70,21 @@ async fn run_once(db: &DatabaseConnection, storage: &dyn object_store::ObjectSto
         .await?
         .rows_affected;
 
-    if pr_deleted > 0 || ev_deleted > 0 || purged > 0 || audit_deleted > 0 {
+    // Webhook deliveries retention — keep 30 days.
+    let whd_cutoff = now - chrono::Duration::days(30);
+    let whd_deleted = webhook_delivery::Entity::delete_many()
+        .filter(webhook_delivery::Column::CreatedAt.lt(whd_cutoff))
+        .exec(db)
+        .await?
+        .rows_affected;
+
+    if pr_deleted > 0 || ev_deleted > 0 || purged > 0 || audit_deleted > 0 || whd_deleted > 0 {
         tracing::info!(
             pr_deleted,
             ev_deleted,
             purged,
             audit_deleted,
+            whd_deleted,
             "housekeeping sweep done"
         );
     }
