@@ -105,6 +105,7 @@ function Home() {
   const [busy, setBusy] = useState(false)
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
+  const [mfaSecret, setMfaSecret] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     const { data } = await api.GET('/files', { params: { query: {} } })
@@ -174,6 +175,12 @@ function Home() {
     setShareUrl((data as { url: string }).url)
   }, [])
 
+  const mfaEnroll = useCallback(async () => {
+    const { data, error } = await api.POST('/mfa/enroll', {})
+    if (error) { console.error('[mfa]', error); return }
+    setMfaSecret((data as { secret: string }).secret)
+  }, [])
+
   const loadStats = useCallback(async () => {
     const { data } = await api.GET('/admin/stats', {})
     if (data) setStats(data as AdminStats)
@@ -218,6 +225,16 @@ function Home() {
       </view>
       {shareUrl ? (
         <text className="Muted">share: {shareUrl}</text>
+      ) : null}
+      {!user.totp_enabled ? (
+        <view className="Button ButtonGhost" bindtap={mfaEnroll}>
+          <text className="ButtonText">Enable MFA (TOTP)</text>
+        </view>
+      ) : (
+        <text className="Muted">MFA enabled ✓</text>
+      )}
+      {mfaSecret ? (
+        <text className="Muted">MFA secret: {mfaSecret} — scan in authenticator, then POST /api/mfa/activate</text>
       ) : null}
       <view className="Button ButtonGhost" bindtap={logout}>
         <text className="ButtonText">Log out</text>
