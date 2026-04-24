@@ -288,6 +288,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(admin::backup))
         .routes(routes!(admin::list_all_orgs))
         .routes(routes!(admin::list_all_webhooks))
+        .routes(routes!(admin::user_detail))
         .routes(routes!(tokens::create_token, tokens::list_tokens))
         .routes(routes!(tokens::revoke_token))
         .routes(routes!(audit::list_mine))

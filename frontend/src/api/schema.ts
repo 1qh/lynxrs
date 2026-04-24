@@ -116,6 +116,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/users/{id}/detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["user_detail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/users/{id}/impersonate": {
         parameters: {
             query?: never;
@@ -1438,6 +1454,25 @@ export interface components {
             /** Format: int32 */
             status?: number | null;
         };
+        UserDetail: {
+            /** Format: date-time */
+            created_at: string;
+            display_name?: string | null;
+            email: string;
+            email_verified: boolean;
+            /** Format: int32 */
+            failed_login_count: number;
+            /** Format: int64 */
+            files_count: number;
+            /** Format: uuid */
+            id: string;
+            locked: boolean;
+            orgs: string[];
+            role: string;
+            totp_enabled: boolean;
+            /** Format: date-time */
+            updated_at: string;
+        };
         UserDto: {
             avatar_url?: string | null;
             display_name?: string | null;
@@ -1671,6 +1706,33 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    user_detail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDetail"];
+                };
             };
             404: {
                 headers: {

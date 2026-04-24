@@ -387,3 +387,56 @@ pub async fn list_all_webhooks(
         .all(&state.db).await?;
     Ok(axum::Json(rows.into_iter().map(crate::webhooks::WebhookDto::from).collect()))
 }
+
+#[derive(Serialize, ToSchema)]
+pub struct UserDetail {
+    pub id: uuid::Uuid,
+    pub email: String,
+    pub role: String,
+    pub display_name: Option<String>,
+    pub email_verified: bool,
+    pub totp_enabled: bool,
+    pub locked: bool,
+    pub failed_login_count: i32,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub orgs: Vec<uuid::Uuid>,
+    pub files_count: u64,
+}
+
+#[utoipa::path(get, path = "/admin/users/{id}/detail",
+    responses((status = 200, body = UserDetail), (status = 404)))]
+pub async fn user_detail(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
+) -> Result<Json<UserDetail>> {
+    require_admin(&state, &headers, &jar).await?;
+    let u = user::Entity::find_by_id(id).one(&state.db).await?.ok_or(AppError::NotFound)?;
+    use crate::entity::{file_object as fo, membership};
+    let orgs: Vec<uuid::Uuid> = membership::Entity::find()
+        .filter(membership::Column::UserId.eq(id))
+        .select_only()
+        .column(membership::Column::OrgId)
+        .into_tuple()
+        .all(&state.db).await?;
+    let files_count = fo::Entity::find()
+        .filter(fo::Column::OwnerId.eq(id))
+        .filter(fo::Column::DeletedAt.is_null())
+        .count(&state.db).await?;
+    Ok(Json(UserDetail {
+        id: u.id,
+        email: u.email,
+        role: u.role,
+        display_name: u.display_name,
+        email_verified: u.email_verified_at.is_some(),
+        totp_enabled: u.totp_enabled,
+        locked: u.locked_until.map(|t| t > chrono::Utc::now()).unwrap_or(false),
+        failed_login_count: u.failed_login_count,
+        created_at: u.created_at,
+        updated_at: u.updated_at,
+        orgs,
+        files_count,
+    }))
+}
