@@ -11,8 +11,6 @@ ignore = [
   { id = "RUSTSEC-2024-0436", reason = "paste unmaintained; no CVE; pervasive transitive" },
   # rustls-pemfile unmaintained
   { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile unmaintained; no CVE" },
-  # rand unsoundness: only triggers if a custom logger calls rand::rng() — we don't.
-  { id = "RUSTSEC-2026-0097", reason = "no custom log handler calls rand::rng()" },
 ]
 
 [bans]
