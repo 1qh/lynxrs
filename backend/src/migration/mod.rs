@@ -17,6 +17,7 @@ mod m20260424_000014_file_checksum;
 mod m20260424_000015_login_lockout;
 mod m20260424_000016_mfa_recovery;
 mod m20260424_000017_soft_delete;
+mod m20260424_000018_file_tags;
 
 pub struct Migrator;
 
@@ -41,6 +42,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260424_000015_login_lockout::Migration),
             Box::new(m20260424_000016_mfa_recovery::Migration),
             Box::new(m20260424_000017_soft_delete::Migration),
+            Box::new(m20260424_000018_file_tags::Migration),
         ]
     }
 }

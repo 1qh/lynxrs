@@ -68,6 +68,7 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         files::QuotaDto,
         files::RenameInput,
         files::VerifyDto,
+        files::TagInput,
         files::CreateShareInput,
         files::Base64UploadInput,
         events::EventMsg,
@@ -190,6 +191,8 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(files::list_trash))
         .routes(routes!(files::restore))
         .routes(routes!(files::purge))
+        .routes(routes!(files::add_tag))
+        .routes(routes!(files::remove_tag))
         .routes(routes!(files::download, files::rename))
         .routes(routes!(files::delete))
         .routes(routes!(files::create_share, files::list_shares))

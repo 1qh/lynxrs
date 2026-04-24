@@ -30,6 +30,7 @@ pub struct FileDto {
     pub size_bytes: i64,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub sha256: Option<String>,
+    pub tags: Vec<String>,
 }
 
 impl From<file_object::Model> for FileDto {
@@ -41,6 +42,7 @@ impl From<file_object::Model> for FileDto {
             size_bytes: m.size_bytes,
             created_at: m.created_at,
             sha256: m.sha256,
+            tags: m.tags,
         }
     }
 }
@@ -212,6 +214,7 @@ pub async fn upload(
         created_at: Set(chrono::Utc::now()),
         sha256: Set(Some(sha)),
         deleted_at: Set(None),
+        tags: Set(vec![]),
     }
     .insert(&state.db)
     .await?;
@@ -310,6 +313,53 @@ pub async fn delete(
     am.update(&state.db).await?;
     let _ = state.bus.send(EventMsg::FileDeleted { file_id: id, owner_id: uid });
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize, ToSchema, Validate)]
+pub struct TagInput {
+    #[validate(length(min = 1, max = 40))]
+    pub tag: String,
+}
+
+#[utoipa::path(post, path = "/files/{id}/tags", request_body = TagInput,
+    responses((status = 200, body = FileDto), (status = 404)))]
+pub async fn add_tag(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+    Json(input): Json<TagInput>,
+) -> Result<Json<FileDto>> {
+    input.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let row = file_object::Entity::find_by_id(id)
+        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+    if row.owner_id != uid { return Err(AppError::NotFound); }
+    let mut tags = row.tags.clone();
+    if !tags.contains(&input.tag) { tags.push(input.tag); }
+    let mut am: file_object::ActiveModel = row.into();
+    am.tags = Set(tags);
+    let updated = am.update(&state.db).await?;
+    Ok(Json(FileDto::from(updated)))
+}
+
+#[utoipa::path(delete, path = "/files/{id}/tags/{tag}",
+    responses((status = 200, body = FileDto), (status = 404)))]
+pub async fn remove_tag(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Path((id, tag)): Path<(Uuid, String)>,
+) -> Result<Json<FileDto>> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let row = file_object::Entity::find_by_id(id)
+        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+    if row.owner_id != uid { return Err(AppError::NotFound); }
+    let tags: Vec<String> = row.tags.iter().filter(|t| **t != tag).cloned().collect();
+    let mut am: file_object::ActiveModel = row.into();
+    am.tags = Set(tags);
+    let updated = am.update(&state.db).await?;
+    Ok(Json(FileDto::from(updated)))
 }
 
 #[utoipa::path(get, path = "/trash", responses((status = 200, body = FileList)))]
@@ -704,6 +754,7 @@ pub async fn upload_json(
         created_at: Set(chrono::Utc::now()),
         sha256: Set(Some(sha)),
         deleted_at: Set(None),
+        tags: Set(vec![]),
     }
     .insert(&state.db)
     .await?;
