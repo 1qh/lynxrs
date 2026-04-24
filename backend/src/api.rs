@@ -77,6 +77,7 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         tokens::ApiTokenCreated,
         tokens::CreateTokenInput,
         audit::AuditDto,
+        admin::SetRoleInput,
         mfa::EnrollDto,
         mfa::MfaCodeInput,
         mfa::RecoveryCodesDto,
@@ -195,9 +196,11 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(admin::list_users))
         .routes(routes!(admin::audit_all))
         .routes(routes!(admin::audit_csv))
+        .routes(routes!(admin::set_role))
         .routes(routes!(tokens::create_token, tokens::list_tokens))
         .routes(routes!(tokens::revoke_token))
         .routes(routes!(audit::list_mine))
+        .routes(routes!(audit::list_sessions))
         .routes(routes!(mfa::enroll))
         .routes(routes!(mfa::activate))
         .routes(routes!(mfa::disable))

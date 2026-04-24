@@ -7,7 +7,7 @@ use axum_extra::extract::{
     PrivateCookieJar,
     cookie::{Cookie, SameSite},
 };
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
@@ -551,6 +551,17 @@ pub async fn forgot_password(
         .one(&state.db)
         .await?
     {
+        // Per-user 3/10min rate limit to block abuse.
+        let window = chrono::Utc::now() - chrono::Duration::minutes(10);
+        let recent = password_reset::Entity::find()
+            .filter(password_reset::Column::UserId.eq(u.id))
+            .filter(password_reset::Column::CreatedAt.gt(window))
+            .count(&state.db)
+            .await?;
+        if recent >= 3 {
+            tracing::warn!(user_id=%u.id, "forgot_password rate-limited");
+            return Ok(StatusCode::ACCEPTED);
+        }
         let raw_token = random_url_token();
         let token_hash = sha256_hex(&raw_token);
         let expires_at = chrono::Utc::now() + chrono::Duration::minutes(60);

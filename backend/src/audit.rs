@@ -45,6 +45,26 @@ pub struct AuditDto {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
+#[utoipa::path(get, path = "/me/sessions", responses((status = 200, body = [AuditDto])))]
+pub async fn list_sessions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: PrivateCookieJar,
+) -> Result<Json<Vec<AuditDto>>> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let rows = audit_event::Entity::find()
+        .filter(audit_event::Column::UserId.eq(uid))
+        .filter(audit_event::Column::Action.eq("login"))
+        .order_by_desc(audit_event::Column::CreatedAt)
+        .limit(50)
+        .all(&state.db)
+        .await?;
+    Ok(Json(rows.into_iter().map(|r| AuditDto {
+        id: r.id, user_id: r.user_id, action: r.action,
+        ip: r.ip, user_agent: r.user_agent, meta: r.meta, created_at: r.created_at,
+    }).collect()))
+}
+
 #[utoipa::path(get, path = "/me/audit", responses((status = 200, body = [AuditDto])))]
 pub async fn list_mine(
     State(state): State<AppState>,

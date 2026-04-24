@@ -1,7 +1,7 @@
 use axum::{Json, extract::State};
 use axum_extra::extract::PrivateCookieJar;
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Statement};
-use serde::Serialize;
+use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement};
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::{
@@ -190,5 +190,38 @@ pub async fn audit_csv(
         out,
     )
         .into_response())
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct SetRoleInput {
+    pub role: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/admin/users/{id}/role",
+    request_body = SetRoleInput,
+    responses((status = 204), (status = 400), (status = 401))
+)]
+pub async fn set_role(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
+    Json(input): Json<SetRoleInput>,
+) -> Result<axum::http::StatusCode> {
+    require_admin(&state, &headers, &jar).await?;
+    if !matches!(input.role.as_str(), "admin" | "user") {
+        return Err(AppError::BadRequest("role must be admin|user".into()));
+    }
+    let u = user::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let mut am: user::ActiveModel = u.into();
+    am.role = Set(input.role);
+    am.updated_at = Set(chrono::Utc::now());
+    am.update(&state.db).await?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
