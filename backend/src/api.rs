@@ -76,6 +76,7 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         files::CommentDto,
         files::CommentInput,
         files::ZipDownloadInput,
+        files::MoveInput,
         files::PresignedDto,
         files::PresignUploadInput,
         files::PresignUploadDto,
@@ -269,6 +270,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(files::download_zip))
         .routes(routes!(files::star_file, files::unstar_file))
         .routes(routes!(files::list_starred))
+        .routes(routes!(files::move_file))
         .routes(routes!(files::download, files::rename, files::head_file))
         .routes(routes!(files::delete))
         .routes(routes!(files::create_share, files::list_shares))

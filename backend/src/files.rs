@@ -1697,3 +1697,35 @@ pub async fn list_starred(
         .all(&state.db).await?;
     Ok(Json(rows.into_iter().map(FileDto::from).collect()))
 }
+
+#[derive(Deserialize, ToSchema)]
+pub struct MoveInput {
+    #[serde(default)]
+    pub org_id: Option<Uuid>,
+}
+
+#[utoipa::path(patch, path = "/files/{id}/move", request_body = MoveInput,
+    responses((status = 200, body = FileDto), (status = 404)))]
+pub async fn move_file(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+    Json(input): Json<MoveInput>,
+) -> Result<Json<FileDto>> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let row = file_object::Entity::find_by_id(id)
+        .one(&state.db).await?.ok_or(AppError::NotFound)?;
+    if row.owner_id != uid { return Err(AppError::NotFound); }
+    if let Some(org) = input.org_id {
+        let ids = user_org_ids(&state.db, uid).await?;
+        if !ids.contains(&org) {
+            return Err(AppError::Unauthorized);
+        }
+        enforce_org_quota(&state.db, org, row.size_bytes).await?;
+    }
+    let mut am: file_object::ActiveModel = row.into();
+    am.org_id = Set(input.org_id);
+    let updated = am.update(&state.db).await?;
+    Ok(Json(FileDto::from(updated)))
+}

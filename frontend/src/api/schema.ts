@@ -532,6 +532,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/files/{id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["move_file"];
+        trace?: never;
+    };
     "/files/{id}/presign": {
         parameters: {
             query?: never;
@@ -1346,6 +1362,10 @@ export interface components {
         };
         MfaCodeInput: {
             code: string;
+        };
+        MoveInput: {
+            /** Format: uuid */
+            org_id?: string | null;
         };
         OrgDto: {
             /** Format: date-time */
@@ -2490,6 +2510,37 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    move_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveInput"];
+            };
+        };
         responses: {
             200: {
                 headers: {
