@@ -61,6 +61,7 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         auth::ForgotPasswordInput,
         auth::ResetPasswordInput,
         auth::ChangePasswordInput,
+        auth::ProfileInput,
         auth::VerifyEmailInput,
         files::FileDto,
         files::FileList,
@@ -93,6 +94,7 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         webhooks::WebhookCreated,
         webhooks::CreateWebhookInput,
         webhooks::DeliveryDto,
+        webhooks::TestResult,
     )),
     tags((name = "simu", description = "Simu SaaS API"))
 )]
@@ -163,10 +165,25 @@ async fn ready(
             Some(Err(_)) => false,
         }
     };
+    let smtp_ok = {
+        let host = std::env::var("SMTP_HOST").unwrap_or_else(|_| "localhost".into());
+        let port: u16 = std::env::var("SMTP_PORT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(25);
+        tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            tokio::net::TcpStream::connect((host.as_str(), port)),
+        )
+        .await
+        .map(|r| r.is_ok())
+        .unwrap_or(false)
+    };
     let all_ok = db_ok && s3_ok;
     let body = serde_json::json!({
         "db": if db_ok { "ok" } else { "fail" },
         "s3": if s3_ok { "ok" } else { "fail" },
+        "smtp": if smtp_ok { "ok" } else { "fail" },
     });
     (
         if all_ok {
@@ -185,7 +202,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(auth::login))
         .routes(routes!(auth::logout))
         .routes(routes!(auth::logout_all))
-        .routes(routes!(auth::me, auth::delete_me))
+        .routes(routes!(auth::me, auth::delete_me, auth::update_me))
         .routes(routes!(auth::forgot_password))
         .routes(routes!(auth::reset_password))
         .routes(routes!(auth::change_password))
@@ -231,6 +248,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(webhooks::create_webhook, webhooks::list_webhooks))
         .routes(routes!(webhooks::revoke_webhook))
         .routes(routes!(webhooks::list_deliveries))
+        .routes(routes!(webhooks::test_webhook))
         .with_state(state.clone())
         .split_for_parts();
 

@@ -135,6 +135,61 @@ pub async fn list_deliveries(
     }).collect()))
 }
 
+#[derive(Serialize, ToSchema)]
+pub struct TestResult {
+    pub status: Option<i32>,
+    pub error: Option<String>,
+    pub duration_ms: i32,
+}
+
+#[utoipa::path(post, path = "/webhooks/{id}/test",
+    responses((status = 200, body = TestResult), (status = 404)))]
+pub async fn test_webhook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+) -> Result<Json<TestResult>> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let h = webhook::Entity::find_by_id(id).one(&state.db).await?.ok_or(AppError::NotFound)?;
+    if h.user_id != uid { return Err(AppError::NotFound); }
+    let body = serde_json::json!({"kind":"test","at_ms":chrono::Utc::now().timestamp_millis()}).to_string();
+    let mac = HmacSha256::new_from_slice(h.secret.as_bytes()).unwrap();
+    let mut m = mac.clone();
+    m.update(body.as_bytes());
+    let sig = hex::encode(m.finalize().into_bytes());
+    let started = std::time::Instant::now();
+    let send = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap()
+        .post(&h.url)
+        .header("content-type", "application/json")
+        .header("x-simu-signature", format!("sha256={sig}"))
+        .header("x-simu-attempt", "0")
+        .body(body.clone())
+        .send()
+        .await;
+    let elapsed = started.elapsed().as_millis() as i32;
+    let (status, err) = match &send {
+        Ok(r) => (Some(r.status().as_u16() as i32), None),
+        Err(e) => (None, Some(e.to_string())),
+    };
+    let _ = webhook_delivery::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        webhook_id: Set(h.id),
+        attempt: Set(0),
+        status: Set(status),
+        duration_ms: Set(Some(elapsed)),
+        error: Set(err.clone()),
+        event_kind: Set("test".to_string()),
+        created_at: Set(chrono::Utc::now()),
+    }
+    .insert(&state.db)
+    .await;
+    Ok(Json(TestResult { status, error: err, duration_ms: elapsed }))
+}
+
 pub fn spawn_dispatcher(state: AppState) {
     let mut rx = state.bus.subscribe();
     let client = reqwest::Client::builder()

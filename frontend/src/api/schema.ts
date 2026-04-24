@@ -193,7 +193,7 @@ export interface paths {
         delete: operations["delete_me"];
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["update_me"];
         trace?: never;
     };
     "/auth/password/change": {
@@ -772,6 +772,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/webhooks/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["test_webhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -977,6 +993,10 @@ export interface components {
             expires_in_seconds: number;
             url: string;
         };
+        ProfileInput: {
+            avatar_url?: string | null;
+            display_name?: string | null;
+        };
         QuotaDto: {
             /** Format: int64 */
             limit_bytes: number;
@@ -1003,7 +1023,16 @@ export interface components {
         TagInput: {
             tag: string;
         };
+        TestResult: {
+            /** Format: int32 */
+            duration_ms: number;
+            error?: string | null;
+            /** Format: int32 */
+            status?: number | null;
+        };
         UserDto: {
+            avatar_url?: string | null;
+            display_name?: string | null;
             email: string;
             email_verified: boolean;
             /** Format: uuid */
@@ -1391,6 +1420,29 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    update_me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDto"];
+                };
             };
         };
     };
@@ -2561,6 +2613,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeliveryDto"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    test_webhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResult"];
                 };
             };
             404: {

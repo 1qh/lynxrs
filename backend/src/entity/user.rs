@@ -24,6 +24,8 @@ pub struct Model {
     #[sea_orm(default_value = 0)]
     pub failed_login_count: i32,
     pub locked_until: Option<ChronoDateTimeUtc>,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

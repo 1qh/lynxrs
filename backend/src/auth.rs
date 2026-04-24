@@ -48,6 +48,8 @@ pub struct UserDto {
     pub role: String,
     pub email_verified: bool,
     pub totp_enabled: bool,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
 }
 
 impl From<user::Model> for UserDto {
@@ -58,8 +60,37 @@ impl From<user::Model> for UserDto {
             role: m.role,
             email_verified: m.email_verified_at.is_some(),
             totp_enabled: m.totp_enabled,
+            display_name: m.display_name,
+            avatar_url: m.avatar_url,
         }
     }
+}
+
+#[derive(serde::Deserialize, utoipa::ToSchema, Validate)]
+pub struct ProfileInput {
+    #[validate(length(min = 1, max = 80))]
+    pub display_name: Option<String>,
+    #[validate(url)]
+    pub avatar_url: Option<String>,
+}
+
+#[utoipa::path(patch, path = "/auth/me", request_body = ProfileInput,
+    responses((status = 200, body = UserDto)))]
+pub async fn update_me(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Json(input): Json<ProfileInput>,
+) -> Result<Json<UserDto>> {
+    input.validate().map_err(|e| AppError::Validation(e.to_string()))?;
+    let uid = authenticate(&state, &headers, &jar).await?;
+    let u = user::Entity::find_by_id(uid).one(&state.db).await?.ok_or(AppError::Unauthorized)?;
+    let mut am: user::ActiveModel = u.into();
+    if let Some(dn) = input.display_name { am.display_name = Set(Some(dn)); }
+    if let Some(av) = input.avatar_url { am.avatar_url = Set(Some(av)); }
+    am.updated_at = Set(chrono::Utc::now());
+    let updated = am.update(&state.db).await?;
+    Ok(Json(UserDto::from(updated)))
 }
 
 pub async fn hash_password_sync(password: String) -> Result<String> {
@@ -149,6 +180,8 @@ pub async fn signup(
         totp_enabled: Set(false),
         failed_login_count: Set(0),
         locked_until: Set(None),
+        display_name: Set(None),
+        avatar_url: Set(None),
     }
     .insert(&state.db)
     .await?;
