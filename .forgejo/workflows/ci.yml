@@ -55,25 +55,19 @@ jobs:
       - name: build
         run: cargo build --locked --release
 
-      - name: unit + integration tests
-        env:
-          DATABASE_URL: postgres://simu:simu@localhost:5432/simu
-        run: cargo nextest run --release --locked
+      - uses: taiki-e/install-action@nextest
+      - name: unit + integration tests (testcontainers spawn own pg/minio)
+        run: cargo nextest run --release --locked --no-fail-fast
 
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit,cargo-deny,cargo-machete
       - name: cargo-audit
-        run: |
-          cargo install cargo-audit --locked
-          cargo audit --deny warnings || true
-
+        run: cargo audit --deny warnings || true
       - name: cargo-deny
-        run: |
-          cargo install cargo-deny --locked
-          cargo deny check --config deny.toml
-
+        run: cargo deny check --config deny.toml
       - name: cargo-machete (unused deps)
-        run: |
-          cargo install cargo-machete --locked
-          cargo machete
+        run: cargo machete
 
   frontend:
     name: Lynx frontend
@@ -87,7 +81,7 @@ jobs:
         with:
           bun-version: latest
       - name: install
-        run: bun install --no-save
+        run: bun install
       - name: typecheck
         run: bun run typecheck
       - name: build
