@@ -93,7 +93,7 @@ pub fn image_magic_ok(claimed: &str, data: &[u8]) -> bool {
     false
 }
 
-async fn enforce_org_quota(
+pub(crate) async fn enforce_org_quota(
     db: &sea_orm::DatabaseConnection,
     org_id: Uuid,
     incoming: i64,
@@ -364,9 +364,21 @@ pub async fn delete(
     if !can_access(&state.db, uid, &row).await? {
         return Err(AppError::NotFound);
     }
+    let now = chrono::Utc::now();
     let mut am: file_object::ActiveModel = row.into();
-    am.deleted_at = Set(Some(chrono::Utc::now()));
+    am.deleted_at = Set(Some(now));
     am.update(&state.db).await?;
+    // Cascade: revoke active shares so the public link stops working.
+    use crate::entity::file_share;
+    let _ = file_share::Entity::update_many()
+        .filter(file_share::Column::FileId.eq(id))
+        .filter(file_share::Column::RevokedAt.is_null())
+        .col_expr(
+            file_share::Column::RevokedAt,
+            sea_orm::sea_query::Expr::value(Some(now)),
+        )
+        .exec(&state.db)
+        .await;
     let _ = state.bus.send(EventMsg::FileDeleted {
         file_id: id,
         owner_id: uid,

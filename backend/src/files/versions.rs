@@ -16,7 +16,9 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
-use super::{Base64UploadInput, FileDto, MAX_FILE_BYTES, can_access, enforce_quota};
+use super::{
+    Base64UploadInput, FileDto, MAX_FILE_BYTES, can_access, enforce_org_quota, enforce_quota,
+};
 use crate::{
     entity::{file_object, file_version},
     error::{AppError, Result},
@@ -129,6 +131,9 @@ pub async fn create_version(
         )));
     }
     enforce_quota(&state.db, uid, data.len() as i64).await?;
+    if let Some(org_id) = row.org_id {
+        enforce_org_quota(&state.db, org_id, data.len() as i64).await?;
+    }
 
     snapshot_current(&state.db, &row).await?;
 

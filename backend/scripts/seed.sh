@@ -45,7 +45,7 @@ owner_jar="/tmp/seed-u1.cookies"
 slug="demo-$(date +%s)"
 org=$(mutate "$owner_jar" -X POST "$BASE/api/orgs" \
   -d "{\"name\":\"Demo Org\",\"slug\":\"$slug\"}")
-org_id=$(echo "$org" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])' 2>/dev/null || echo "")
+org_id=$(echo "$org" | jq -r '.id // empty' 2>/dev/null || echo "")
 if [[ -n "$org_id" ]]; then
   for email in user2@simu.local user3@simu.local; do
     mutate "$owner_jar" -X POST "$BASE/api/orgs/$org_id/members" \

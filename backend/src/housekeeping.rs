@@ -71,13 +71,41 @@ pub async fn run_once(
         }
     }
 
-    // Audit retention — keep 90 days.
+    // Audit retention — keep 90 days. Before purging, export to S3 cold
+    // storage (newline-delimited JSON, one object per row) so the chain is
+    // recoverable for compliance.
     let ai_cutoff = now - chrono::Duration::days(90);
-    let audit_deleted = audit_event::Entity::delete_many()
+    let stale = audit_event::Entity::find()
         .filter(audit_event::Column::CreatedAt.lt(ai_cutoff))
-        .exec(db)
-        .await?
-        .rows_affected;
+        .all(db)
+        .await?;
+    let audit_deleted = if stale.is_empty() {
+        0
+    } else {
+        let n = stale.len() as u64;
+        let mut buf = Vec::with_capacity(n as usize * 256);
+        for r in &stale {
+            if let Ok(line) = serde_json::to_vec(r) {
+                buf.extend_from_slice(&line);
+                buf.push(b'\n');
+            }
+        }
+        let key = format!("audit-archive/{}.ndjson", now.format("%Y%m%dT%H%M%SZ"));
+        let p = object_store::path::Path::from(key.clone());
+        if let Err(e) = storage
+            .put(&p, object_store::PutPayload::from(bytes::Bytes::from(buf)))
+            .await
+        {
+            tracing::warn!(error=%e, "audit archive upload failed; refusing to purge");
+            0
+        } else {
+            audit_event::Entity::delete_many()
+                .filter(audit_event::Column::CreatedAt.lt(ai_cutoff))
+                .exec(db)
+                .await?
+                .rows_affected
+        }
+    };
 
     // Webhook deliveries retention — keep 30 days.
     let whd_cutoff = now - chrono::Duration::days(30);

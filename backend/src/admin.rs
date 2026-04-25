@@ -35,6 +35,16 @@ async fn require_admin(
     if u.role != "admin" {
         return Err(AppError::Unauthorized);
     }
+    // Admin actions require MFA enrolled. Set REQUIRE_ADMIN_MFA=0 to bypass
+    // (only for local dev; production must keep this on).
+    let require_mfa = std::env::var("REQUIRE_ADMIN_MFA")
+        .map(|v| v != "0")
+        .unwrap_or(true);
+    if require_mfa && !u.totp_enabled {
+        return Err(AppError::BadRequest(
+            "admin actions require MFA — enroll first".into(),
+        ));
+    }
     Ok(())
 }
 
