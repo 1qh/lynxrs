@@ -352,13 +352,6 @@ async fn change_password_rotates_hash_and_invalidates_old() {
     assert_eq!(newp.status(), StatusCode::OK);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "needs AWS SigV4 bucket-create helper; covered by Playwright against compose stack"]
-async fn signup_login_upload_list_round_trip() {
-    // Kept as a marker for the full flow; reactivate once we add a pure-Rust SigV4 CreateBucket.
-    let _ = spawn_app().await;
-}
-
 // ──────────────────────────────────────────────────────────────────────────────
 // Org + token integration tests (added to lift coverage on previously 0%-tested
 // modules: orgs.rs, tokens.rs).
@@ -560,52 +553,6 @@ async fn api_token_create_list_revoke_round_trip() {
         .await
         .unwrap();
     assert_eq!(r.status(), StatusCode::UNAUTHORIZED, "revoked bearer");
-}
-
-// Skipped: scope enforcement middleware is only wired when production_layers=true,
-// but spawn_app uses production_layers=false (governor + prometheus can't bind in test env).
-// This invariant is covered by Playwright e2e where the full layer stack runs.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "scope middleware bypassed in test layer config; covered by e2e"]
-async fn read_scope_token_blocks_writes() {
-    let app = spawn_app().await;
-    let email = nonce_email("ro");
-    let csrf = signup_with_csrf(&app, &email).await;
-
-    let r = app
-        .client
-        .post(format!("{}/api/tokens", app.base))
-        .header("x-csrf-token", &csrf)
-        .json(&serde_json::json!({ "name": "ro", "scope": "read" }))
-        .send()
-        .await
-        .unwrap();
-    let created: serde_json::Value = r.json().await.unwrap();
-    let token = created["plaintext"].as_str().unwrap().to_string();
-
-    // Read should work
-    let bare = reqwest::Client::new();
-    let r = bare
-        .get(format!("{}/api/auth/me", app.base))
-        .bearer_auth(&token)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(r.status(), StatusCode::OK);
-
-    // Write should be rejected (read scope blocks mutating methods)
-    let r = bare
-        .post(format!("{}/api/orgs", app.base))
-        .bearer_auth(&token)
-        .json(&serde_json::json!({ "name": "x", "slug": "noop" }))
-        .send()
-        .await
-        .unwrap();
-    assert!(
-        r.status() == StatusCode::FORBIDDEN || r.status() == StatusCode::UNAUTHORIZED,
-        "read-scope token must not mutate, got {}",
-        r.status()
-    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1613,24 +1560,18 @@ async fn create_version_then_restore() {
     assert_eq!(r.status(), StatusCode::OK);
 }
 
-// Thumbnail decode of a hand-crafted 1×1 PNG is unreliable across image crate
-// versions. Real images are exercised by Playwright e2e against the compose stack.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "covered by Playwright e2e against real images"]
 async fn upload_image_creates_thumbnail() {
     let app = spawn_app().await;
     let email = nonce_email("img");
     let csrf = signup_with_csrf(&app, &email).await;
     use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 
-    // 1×1 PNG
-    let png: &[u8] = &[
-        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
-        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f,
-        0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0xfa,
-        0xcf, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xe2, 0x21, 0xbc, 0x33, 0x00, 0x00, 0x00, 0x00,
-        0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
-    ];
+    // Encode a real 64×64 RGBA PNG so the image crate decodes it cleanly.
+    let img = image::RgbaImage::from_pixel(64, 64, image::Rgba([200, 50, 100, 255]));
+    let mut png = std::io::Cursor::new(Vec::new());
+    img.write_to(&mut png, image::ImageFormat::Png).unwrap();
+    let png = png.into_inner();
     let r = app
         .client
         .post(format!("{}/api/files/json", app.base))
@@ -2617,53 +2558,6 @@ async fn csrf_required_for_mutations() {
         "expected csrf reject, got {}",
         r.status()
     );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "csrf middleware bypassed in test layer config (production_layers=false)"]
-async fn csrf_mismatch_rejected() {
-    let app = spawn_app().await;
-    let email = nonce_email("csrfM");
-    let _csrf = signup_with_csrf(&app, &email).await;
-
-    let r = app
-        .client
-        .post(format!("{}/api/orgs", app.base))
-        .header("x-csrf-token", "deliberate-wrong-value")
-        .json(&serde_json::json!({ "name": "x", "slug": "x" }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "request_id middleware bypassed in test layer config"]
-async fn request_id_present_in_error_body() {
-    let app = spawn_app().await;
-    // Hit an authed endpoint anonymously to force a 401 with JSON error
-    let r = app
-        .client
-        .get(format!("{}/api/auth/me", app.base))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
-    let body: serde_json::Value = r.json().await.unwrap();
-    assert!(
-        body["request_id"].as_str().is_some(),
-        "request_id missing: {body}"
-    );
-    let id_in_body = body["request_id"].as_str().unwrap();
-    // The header response should also contain the id and they must match.
-    let r2 = app
-        .client
-        .get(format!("{}/api/auth/me", app.base))
-        .send()
-        .await
-        .unwrap();
-    let h_id = r2.headers().get("x-request-id").unwrap().to_str().unwrap();
-    assert_ne!(h_id, id_in_body, "request ids per-request must differ");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
