@@ -147,9 +147,7 @@ pub async fn run_once(
             if age < chrono::Duration::hours(1) {
                 continue;
             }
-            if !known.contains(&key)
-                && storage.delete(&meta.location).await.is_ok()
-            {
+            if !known.contains(&key) && storage.delete(&meta.location).await.is_ok() {
                 orphans_deleted += 1;
             }
         }

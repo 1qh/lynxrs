@@ -128,3 +128,40 @@ fn parse_range_basic_cases() {
     // start > total
     assert_eq!(parse_range("bytes=300-400", 200), None);
 }
+
+// audit chain canonical hashing invariants.
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 32, .. ProptestConfig::default() })]
+
+    #[test]
+    fn canonical_row_is_deterministic(action in "[a-z_]{3,40}", meta_key in "[a-z]{1,16}", meta_val in "[ -~]{0,128}") {
+        use simu_backend::audit::canonical_row;
+        let id = uuid::Uuid::now_v7();
+        let uid = Some(uuid::Uuid::now_v7());
+        let ip = Some("127.0.0.1".to_string());
+        let ua = Some("test/1.0".to_string());
+        let meta = serde_json::json!({ &meta_key: &meta_val });
+        let created = chrono::Utc::now();
+        let a = canonical_row(&id, &uid, &action, &ip, &ua, &meta, &created);
+        let b = canonical_row(&id, &uid, &action, &ip, &ua, &meta, &created);
+        prop_assert_eq!(a, b);
+    }
+
+    #[test]
+    fn hash_chain_changes_when_canonical_changes(prev in "[0-9a-f]{64}", c1 in "[ -~]{1,128}", c2 in "[ -~]{1,128}") {
+        use simu_backend::audit::hash_chain;
+        let h1 = hash_chain(&prev, &c1);
+        let h2 = hash_chain(&prev, &c2);
+        if c1 != c2 {
+            prop_assert_ne!(h1, h2);
+        }
+    }
+
+    #[test]
+    fn hash_chain_changes_when_prev_changes(p1 in "[0-9a-f]{64}", p2 in "[0-9a-f]{64}", c in "[ -~]{1,128}") {
+        use simu_backend::audit::hash_chain;
+        if p1 != p2 {
+            prop_assert_ne!(hash_chain(&p1, &c), hash_chain(&p2, &c));
+        }
+    }
+}

@@ -4029,8 +4029,8 @@ async fn state_db_clone(app: &App) -> sea_orm::DatabaseConnection {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn oauth_callback_with_mock_oidc_creates_account() {
-    use wiremock::{Mock, MockServer, ResponseTemplate};
     use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     let mock = MockServer::start().await;
     let token_url = format!("{}/token", mock.uri());
@@ -4043,10 +4043,7 @@ async fn oauth_callback_with_mock_oidc_creates_account() {
         std::env::set_var("OAUTH_REDIRECT_URL", "http://localhost/cb");
         std::env::set_var("OAUTH_TOKEN_URL", &token_url);
         std::env::set_var("OAUTH_USERINFO_URL", &userinfo_url);
-        std::env::set_var(
-            "OAUTH_AUTHORIZE_URL",
-            format!("{}/authorize", mock.uri()),
-        );
+        std::env::set_var("OAUTH_AUTHORIZE_URL", format!("{}/authorize", mock.uri()));
     }
 
     let app = spawn_app().await;
@@ -4054,13 +4051,11 @@ async fn oauth_callback_with_mock_oidc_creates_account() {
     // Mock token endpoint
     Mock::given(method("POST"))
         .and(path("/token"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "access_token": "mock-access",
-                "token_type": "Bearer",
-                "expires_in": 3600,
-            })),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "access_token": "mock-access",
+            "token_type": "Bearer",
+            "expires_in": 3600,
+        })))
         .mount(&mock)
         .await;
     // Mock userinfo

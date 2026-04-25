@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::{entity::audit_event, error::Result, state::AppState};
 
 /// Canonical serialization for hashing. Stable field order, no whitespace.
-fn canonical_row(
+pub fn canonical_row(
     id: &Uuid,
     user_id: &Option<Uuid>,
     action: &str,
@@ -33,7 +33,7 @@ fn canonical_row(
     serde_json::to_string(&v).unwrap_or_default()
 }
 
-fn hash_chain(prev: &str, canonical: &str) -> String {
+pub fn hash_chain(prev: &str, canonical: &str) -> String {
     let mut h = Sha256::new();
     h.update(prev.as_bytes());
     h.update(b"|");
