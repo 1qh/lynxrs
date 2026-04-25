@@ -143,14 +143,14 @@ pub async fn run_once(
                 continue;
             }
             // Heuristic: orphan if older than 1 hour AND not in known set.
-            let age = now - chrono::DateTime::<chrono::Utc>::from(meta.last_modified);
+            let age = now - meta.last_modified;
             if age < chrono::Duration::hours(1) {
                 continue;
             }
-            if !known.contains(&key) {
-                if storage.delete(&meta.location).await.is_ok() {
-                    orphans_deleted += 1;
-                }
+            if !known.contains(&key)
+                && storage.delete(&meta.location).await.is_ok()
+            {
+                orphans_deleted += 1;
             }
         }
     }

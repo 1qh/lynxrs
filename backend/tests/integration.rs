@@ -4026,3 +4026,112 @@ async fn state_db_clone(app: &App) -> sea_orm::DatabaseConnection {
     let url = format!("postgres://postgres:postgres@{pg_host}:{pg_port}/postgres");
     Database::connect(ConnectOptions::new(url)).await.unwrap()
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn oauth_callback_with_mock_oidc_creates_account() {
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use wiremock::matchers::{method, path};
+
+    let mock = MockServer::start().await;
+    let token_url = format!("{}/token", mock.uri());
+    let userinfo_url = format!("{}/userinfo", mock.uri());
+
+    // Configure backend to talk to mock OIDC
+    unsafe {
+        std::env::set_var("OAUTH_CLIENT_ID", "test-cid");
+        std::env::set_var("OAUTH_CLIENT_SECRET", "test-cs");
+        std::env::set_var("OAUTH_REDIRECT_URL", "http://localhost/cb");
+        std::env::set_var("OAUTH_TOKEN_URL", &token_url);
+        std::env::set_var("OAUTH_USERINFO_URL", &userinfo_url);
+        std::env::set_var(
+            "OAUTH_AUTHORIZE_URL",
+            format!("{}/authorize", mock.uri()),
+        );
+    }
+
+    let app = spawn_app().await;
+
+    // Mock token endpoint
+    Mock::given(method("POST"))
+        .and(path("/token"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "mock-access",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            })),
+        )
+        .mount(&mock)
+        .await;
+    // Mock userinfo
+    Mock::given(method("GET"))
+        .and(path("/userinfo"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "email": "oidc-mock@example.com",
+            "verified_email": true,
+        })))
+        .mount(&mock)
+        .await;
+
+    // Step 1: hit /start to seed the simu_oauth_state cookie
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .cookie_store(true)
+        .build()
+        .unwrap();
+    let r = client
+        .get(format!("{}/api/auth/oauth/google/start", app.base))
+        .send()
+        .await
+        .unwrap();
+    let loc = r.headers().get("location").unwrap().to_str().unwrap();
+    let state = loc
+        .split('?')
+        .nth(1)
+        .unwrap()
+        .split('&')
+        .find(|p| p.starts_with("state="))
+        .unwrap()
+        .split_once('=')
+        .unwrap()
+        .1
+        .to_string();
+
+    // Step 2: callback with the same state
+    let r = client
+        .get(format!(
+            "{}/api/auth/oauth/google/callback?code=mock-code&state={state}",
+            app.base
+        ))
+        .send()
+        .await
+        .unwrap();
+    // Backend redirects to public_base_url after issuing session.
+    assert!(
+        r.status() == reqwest::StatusCode::TEMPORARY_REDIRECT
+            || r.status() == reqwest::StatusCode::FOUND
+            || r.status() == reqwest::StatusCode::SEE_OTHER,
+        "callback: {} body={}",
+        r.status(),
+        r.text().await.unwrap_or_default()
+    );
+
+    // Verify the user was created
+    let r = client
+        .get(format!("{}/api/auth/me", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), reqwest::StatusCode::OK, "post-callback /me");
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(body["email"].as_str().unwrap(), "oidc-mock@example.com");
+
+    unsafe {
+        std::env::remove_var("OAUTH_CLIENT_ID");
+        std::env::remove_var("OAUTH_CLIENT_SECRET");
+        std::env::remove_var("OAUTH_REDIRECT_URL");
+        std::env::remove_var("OAUTH_TOKEN_URL");
+        std::env::remove_var("OAUTH_USERINFO_URL");
+        std::env::remove_var("OAUTH_AUTHORIZE_URL");
+    }
+}
