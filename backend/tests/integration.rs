@@ -2820,7 +2820,7 @@ async fn full_base() -> String {
         return b.clone();
     }
     // Run blocking boot off-runtime so we don't poison the test's tokio rt.
-    let s = tokio::task::spawn_blocking(|| {
+    tokio::task::spawn_blocking(|| {
         let _g = BOOT.lock().expect("boot lock");
         if let Some(b) = FULL_BASE.get() {
             return b.clone();
@@ -2845,8 +2845,7 @@ async fn full_base() -> String {
         base
     })
     .await
-    .expect("spawn_blocking");
-    s
+    .expect("spawn_blocking")
 }
 fn full_client() -> Client {
     reqwest::Client::builder()
@@ -3107,7 +3106,7 @@ async fn oauth_status_unconfigured_by_default() {
     assert_eq!(r.status(), StatusCode::OK);
     let body: serde_json::Value = r.json().await.unwrap();
     // No OAUTH_GOOGLE_* env in tests → not configured.
-    assert_eq!(body["google"].as_bool().unwrap(), false);
+    assert!(!body["google"].as_bool().unwrap());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
