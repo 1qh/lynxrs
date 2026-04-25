@@ -57,7 +57,7 @@ pub(crate) const MAX_FILE_BYTES: usize = 50 * 1024 * 1024; // 50 MB cap for spik
 pub(crate) const USER_QUOTA_BYTES: i64 = 500 * 1024 * 1024; // 500 MB per user
 const ORG_QUOTA_BYTES: i64 = 5 * 1024 * 1024 * 1024; // 5 GB per org
 
-fn image_magic_ok(claimed: &str, data: &[u8]) -> bool {
+pub fn image_magic_ok(claimed: &str, data: &[u8]) -> bool {
     if !claimed.starts_with("image/") {
         return true;
     }
@@ -510,7 +510,7 @@ pub async fn download(
         .map_err(|e| AppError::Other(anyhow::anyhow!(e)))
 }
 
-fn parse_range(raw: &str, total: u64) -> Option<(u64, u64)> {
+pub fn parse_range(raw: &str, total: u64) -> Option<(u64, u64)> {
     let rest = raw.strip_prefix("bytes=")?;
     let (a, b) = rest.split_once('-')?;
     let start: u64 = a.parse().ok()?;

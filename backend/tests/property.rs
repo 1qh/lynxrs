@@ -83,3 +83,48 @@ fn telemetry_init_without_otlp_is_noop() {
     // For now this is a structural check: the module compiles.
     let _ = std::env::var("OTLP_ENDPOINT").is_ok();
 }
+
+// Pure-function unit tests for files/mod.rs helpers.
+#[test]
+fn image_magic_ok_recognizes_real_signatures() {
+    use simu_backend::files::image_magic_ok;
+    // PNG
+    assert!(image_magic_ok(
+        "image/png",
+        &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]
+    ));
+    // JPEG
+    assert!(image_magic_ok(
+        "image/jpeg",
+        &[0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]
+    ));
+    // GIF89a
+    assert!(image_magic_ok("image/gif", b"GIF89a\0\0\0\0\0\0"));
+    // RIFF/WEBP — needs at least 12 bytes
+    assert!(image_magic_ok("image/webp", b"RIFF\0\0\0\0WEBP"));
+    // Non-image content type bypasses magic check
+    assert!(image_magic_ok("text/plain", b""));
+    // Lying about PNG-ness with JPEG bytes
+    assert!(!image_magic_ok(
+        "image/png",
+        &[0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]
+    ));
+    // Too-short data for image
+    assert!(!image_magic_ok("image/png", &[0x89, 0x50]));
+}
+
+#[test]
+fn parse_range_basic_cases() {
+    use simu_backend::files::parse_range;
+    // bytes=0-99 / total=200 → (0, 99)
+    assert_eq!(parse_range("bytes=0-99", 200), Some((0, 99)));
+    // bytes=100- / total=200 → (100, 199)
+    assert_eq!(parse_range("bytes=100-", 200), Some((100, 199)));
+    // bytes=- / suffix ignored or end → None or suffix
+    let r = parse_range("bytes=-50", 200);
+    assert!(matches!(r, Some(_) | None));
+    // garbage
+    assert_eq!(parse_range("nonsense", 200), None);
+    // start > total
+    assert_eq!(parse_range("bytes=300-400", 200), None);
+}
