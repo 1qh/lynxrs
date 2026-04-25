@@ -115,13 +115,60 @@ pub async fn run_once(
         .await?
         .rows_affected;
 
-    if pr_deleted > 0 || ev_deleted > 0 || purged > 0 || audit_deleted > 0 || whd_deleted > 0 {
+    // Reconciliation: enumerate object storage under `u/` and remove keys with
+    // no DB row (orphans from interrupted writes). Bound by ITER_LIMIT to keep
+    // the sweep cheap; full reconciliation can be re-run repeatedly.
+    let mut orphans_deleted: u64 = 0;
+    {
+        use futures::StreamExt;
+        let known: std::collections::HashSet<String> = file_object::Entity::find()
+            .all(db)
+            .await?
+            .into_iter()
+            .map(|r| r.storage_key)
+            .collect();
+        let prefix = object_store::path::Path::from("u/");
+        let mut stream = storage.list(Some(&prefix));
+        const ITER_LIMIT: usize = 5_000;
+        let mut seen = 0usize;
+        while let Some(item) = stream.next().await {
+            seen += 1;
+            if seen > ITER_LIMIT {
+                break;
+            }
+            let Ok(meta) = item else { continue };
+            let key = meta.location.to_string();
+            // Skip thumbnails; they live under u/{uid}/thumb/* and have no row.
+            if key.contains("/thumb/") {
+                continue;
+            }
+            // Heuristic: orphan if older than 1 hour AND not in known set.
+            let age = now - chrono::DateTime::<chrono::Utc>::from(meta.last_modified);
+            if age < chrono::Duration::hours(1) {
+                continue;
+            }
+            if !known.contains(&key) {
+                if storage.delete(&meta.location).await.is_ok() {
+                    orphans_deleted += 1;
+                }
+            }
+        }
+    }
+
+    if pr_deleted > 0
+        || ev_deleted > 0
+        || purged > 0
+        || audit_deleted > 0
+        || whd_deleted > 0
+        || orphans_deleted > 0
+    {
         tracing::info!(
             pr_deleted,
             ev_deleted,
             purged,
             audit_deleted,
             whd_deleted,
+            orphans_deleted,
             "housekeeping sweep done"
         );
     }
