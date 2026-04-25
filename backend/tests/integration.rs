@@ -2214,3 +2214,142 @@ async fn auth_email_verify_rejects_bad_token() {
         .unwrap();
     assert_eq!(r.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_head_returns_metadata_headers() {
+    let app = spawn_app().await;
+    let Some((_csrf, file_id)) = signup_and_upload(&app, "head").await else {
+        return;
+    };
+    let r = app
+        .client
+        .head(format!("{}/api/files/{}", app.base, file_id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let h = r.headers();
+    assert_eq!(h.get("content-type").unwrap(), "text/plain");
+    assert_eq!(h.get("accept-ranges").unwrap(), "bytes");
+    assert!(h.get("etag").is_some());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_download_full_and_range() {
+    let app = spawn_app().await;
+    let Some((_csrf, file_id)) = signup_and_upload(&app, "dl").await else {
+        return;
+    };
+    // Full download
+    let r = app
+        .client
+        .get(format!("{}/api/files/{}", app.base, file_id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let body = r.text().await.unwrap();
+    assert_eq!(body, "fixture content");
+
+    // Range download (first 7 bytes = "fixture")
+    let r = app
+        .client
+        .get(format!("{}/api/files/{}", app.base, file_id))
+        .header("range", "bytes=0-6")
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        r.status() == StatusCode::PARTIAL_CONTENT || r.status() == StatusCode::OK,
+        "range: {}",
+        r.status()
+    );
+    let body = r.text().await.unwrap();
+    assert_eq!(body, "fixture");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_list_pagination_with_cursor() {
+    let app = spawn_app().await;
+    let email = nonce_email("pag");
+    let csrf = signup_with_csrf(&app, &email).await;
+    use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
+    // Upload 5 files
+    for i in 0..5 {
+        app.client
+            .post(format!("{}/api/files/json", app.base))
+            .header("x-csrf-token", &csrf)
+            .json(&serde_json::json!({
+                "filename": format!("p{i}.txt"), "content_type": "text/plain",
+                "data_base64": B64.encode(format!("p{i}")),
+            }))
+            .send()
+            .await
+            .unwrap();
+    }
+    // page 1
+    let r = app
+        .client
+        .get(format!("{}/api/files?limit=2", app.base))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(body["items"].as_array().unwrap().len(), 2);
+    let cursor = body["next_cursor"].as_str().expect("cursor present");
+    // page 2
+    let r = app
+        .client
+        .get(format!("{}/api/files?limit=2&cursor={cursor}", app.base))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(body["items"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_multipart_upload_round_trip() {
+    let app = spawn_app().await;
+    let email = nonce_email("mp");
+    let csrf = signup_with_csrf(&app, &email).await;
+
+    // Build multipart body manually with reqwest::multipart
+    let part = reqwest::multipart::Part::bytes(b"hello multipart".to_vec())
+        .file_name("mp.txt")
+        .mime_str("text/plain")
+        .unwrap();
+    let form = reqwest::multipart::Form::new().part("file", part);
+
+    let r = app
+        .client
+        .post(format!("{}/api/files", app.base))
+        .header("x-csrf-token", &csrf)
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::CREATED, "multipart upload");
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(body["filename"].as_str().unwrap(), "mp.txt");
+    assert_eq!(body["size_bytes"].as_i64().unwrap(), 15);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_describe_persists_description() {
+    let app = spawn_app().await;
+    let Some((csrf, file_id)) = signup_and_upload(&app, "desc").await else {
+        return;
+    };
+    let r = app
+        .client
+        .patch(format!("{}/api/files/{}/describe", app.base, file_id))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({ "description": "Hello world" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(body["description"].as_str().unwrap(), "Hello world");
+}
