@@ -107,6 +107,11 @@ jobs:
       - name: build backend
         working-directory: backend
         run: cargo build --release --locked
+      - name: pre-launch diagnostics
+        run: |
+          docker ps -a
+          docker exec simu-postgres pg_isready -U simu -d simu || true
+          docker logs --tail 20 simu-postgres || true
       - name: launch backend
         working-directory: backend
         env:
@@ -117,11 +122,24 @@ jobs:
           S3_BUCKET: simu-uploads
           SESSION_SECRET: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
         run: |
-          ./target/release/simu-backend &
-          for i in $(seq 1 40); do
-            curl -sf http://127.0.0.1:8088/health && break
+          ./target/release/simu-backend > /tmp/simu-backend.log 2>&1 &
+          BPID=$!
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8088/health >/dev/null 2>&1; then
+              echo "backend ready after ${i}s"
+              exit 0
+            fi
+            if ! kill -0 $BPID 2>/dev/null; then
+              echo "backend died — log:"
+              cat /tmp/simu-backend.log
+              exit 1
+            fi
             sleep 2
           done
+          echo "backend never became ready — log:"
+          cat /tmp/simu-backend.log
+          docker logs --tail 30 simu-postgres
+          exit 1
       - name: frontend deps
         working-directory: frontend
         run: bun install
