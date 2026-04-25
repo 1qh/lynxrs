@@ -1,13 +1,14 @@
 Coverage from `cargo llvm-cov --release --tests --summary-only -- --test-threads=2`.
-95 tests passing + 6 ignored.
+100 tests passing + 6 ignored.
 
-Final this session (from 13.08% baseline):
-  TOTAL: 70.79% region / 76.91% line / 65.26% fn
-  Δ: +57.71 region / +62.68 line / +49.77 fn
+Final this session:
+  baseline:  13.08% region / 14.23% line
+  final:     71.77% region / 77.81% line   (+58.69 / +63.58 absolute)
+  fn cov:    65.81%
 
 Major modules ≥50% line cov:
-  webhooks             87%   (dispatcher + delivery via tcp sink)
-  bin/simu-admin       88%   (subprocess + edge cases)
+  webhooks             87%
+  bin/simu-admin       88%
   files/meta           88%
   files/versions       86%
   files/stars          88%
@@ -26,15 +27,9 @@ Major modules ≥50% line cov:
   files/shares         55%
   files/presign        53%
   files/bulk           52%
-  error                73%   (IntoResponse mapping for all variants)
+  error                73%
 
-Still 0% / very low (engineering needed, not just tests):
+Still 0% / very low:
 - telemetry: only invoked by main()
 - files/thumb: covered by Playwright e2e
 - oauth callback: needs OIDC mock provider
-
-Run notes:
-- `cargo test --tests --release -- --test-threads=2` (avoid colima exhaustion)
-- Production-layer tests share one app via OnceLock+Mutex+spawn_blocking
-- spawn_app_full also runs webhooks::spawn_dispatcher
-- axum::serve uses `into_make_service_with_connect_info::<SocketAddr>()`
