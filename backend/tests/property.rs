@@ -165,3 +165,21 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn telemetry_layer_returns_none_when_otlp_endpoint_unset() {
+    use simu_backend::telemetry;
+    unsafe {
+        std::env::remove_var("OTLP_ENDPOINT");
+    }
+    // Call via Registry-typed subscriber. The function is generic over S.
+    // We don't actually subscribe — just check the option is None.
+    let layer: Option<Box<dyn tracing_subscriber::Layer<tracing_subscriber::Registry> + Send + Sync>> =
+        telemetry::maybe_otel_layer();
+    assert!(layer.is_none(), "expected None when OTLP_ENDPOINT unset");
+}
+
+#[test]
+fn telemetry_shutdown_is_noop() {
+    simu_backend::telemetry::shutdown();
+}
