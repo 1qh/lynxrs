@@ -125,7 +125,7 @@ jobs:
           ./target/release/simu-backend > /tmp/simu-backend.log 2>&1 &
           BPID=$!
           for i in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:8088/health >/dev/null 2>&1; then
+            if curl -sf http://127.0.0.1:8080/health >/dev/null 2>&1; then
               echo "backend ready after ${i}s"
               exit 0
             fi
