@@ -3,6 +3,50 @@
 Green, reproducible foundation for a world-class SaaS.
 Every dep is language-native, pinned exact, and verified fresh (≤6 months at audit time).
 
+## Architecture
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                            Browser / Lynx                               │
+│   ReactLynx (rspeedy) → openapi-fetch + Zustand → /events/ws            │
+└──────────────┬──────────────────────────────────┬───────────────────────┘
+               │ HTTPS (Caddy reverse-proxy)      │ WSS
+               ▼                                  ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                         simu-backend (Rust 1.95)                        │
+│   Axum 0.8 router  ▸ utoipa OpenAPI ▸ tower-http (CORS, compression)    │
+│    ▸ tower_governor (per-IP RL) ▸ axum-prometheus (/metrics)            │
+│    ▸ TraceLayer + tracing-opentelemetry → OTLP                          │
+│    ▸ csrf_enforce ▸ token_scope_enforce ▸ per_user_rate_limit           │
+│    ▸ inject_request_id_into_errors ▸ security_headers (CSP)             │
+│                                                                         │
+│   auth (cookie + bearer + TOTP MFA) ─▶ audit hash chain (sha256, pg     │
+│                                          advisory_xact_lock)            │
+│   files (mod, meta, versions, shares, tags, stars, comments, bulk,      │
+│          trash, presign, thumb)                                         │
+│   webhooks (HMAC-SHA256 signed, retry+backoff dispatcher)               │
+│   housekeeping cron: pw/email-token GC, trash purge, audit archive →    │
+│                       S3 ndjson, webhook delivery purge                 │
+│   mailer (lettre + rustls SMTP) → Mailpit/SES                           │
+│                                                                         │
+│   SeaORM 1.1 → Postgres (rolling alpine, 30+ migrations)                │
+│   object_store 0.13 → MinIO/S3 (presigned PUT/GET, multipart upload)    │
+└────────────────────────────────────────────────────────────────────────┘
+        │                          │                          │
+        ▼                          ▼                          ▼
+   NATS (TBD)              Prometheus + 8 alerts        Jaeger / OTLP
+```
+
+**Operational invariants (test-enforced):**
+
+- Audit chain: `prev_hash || canonical_json(row)` → `row_hash`. `pg_advisory_xact_lock(4242424242)` serializes writes; `audit_chain_holds_under_concurrent_writes` test fires 30 parallel records and verifies the chain.
+- Soft-delete cascades: file delete → revoke shares.
+- Quotas: per-user (`USER_QUOTA_BYTES`) + per-org (`ORG_QUOTA_BYTES`) on upload + version + move.
+- Admin actions require `totp_enabled` (override via `REQUIRE_ADMIN_MFA=0` for dev).
+- CSRF: `simu_csrf` cookie ↔ `X-CSRF-Token` header double-submit on mutating requests.
+- Strict CSP on JSON responses (`default-src 'none'`); relaxed for `/docs` only.
+- Audit retention exports to S3 (`audit-archive/<ts>.ndjson`) before DB purge — refuses to purge if upload fails.
+
 ## What's here
 
 ### Backend (Rust, 33 MB Alpine image)
