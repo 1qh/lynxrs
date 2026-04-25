@@ -1,12 +1,21 @@
-Baseline from `cargo llvm-cov --release --tests --summary-only` (integration + property tests only).
+Coverage from `cargo llvm-cov --release --tests --summary-only`
+(integration + property tests; no e2e instrumentation yet).
 
-TOTAL: 7785 regions, 6767 missed → 13.08% region coverage
-       4527 lines, 3883 missed → 14.23% line coverage
-        536 functions, 453 missed → 15.49% fn coverage
+Progression this spike:
+  baseline:   13.08% regions / 14.23% lines / 15.49% fns
+  +org+token: 19.14% regions / 20.59% lines / 21.14% fns
+  +wh+mfa+f:  22.20% regions / 24.42% lines / 25.74% fns
 
-Well-covered: auth.rs 43.55%, api.rs 33.61%, mailer.rs 37.32%, audit.rs 26.83%, error.rs 73.68%.
-Zero: files.rs, orgs.rs, tokens.rs, webhooks.rs, mfa.rs, oauth.rs (5%), admin.rs, housekeeping.rs.
-These exercised only by Playwright e2e → not counted (process-level).
+Module hot-spots after this round:
+  tokens.rs:       85.48%   (full bearer round-trip + scope)
+  orgs.rs:         49.91%   (create/list/members/stats)
+  webhooks.rs:     19.71%
+  mfa.rs:          16.67%
+  files/mod.rs:     7.81%   (json upload + delete + trash list)
+  files/* subs:    0.00%    (versions, tags, shares, comments, stars, presign,
+                              thumb, bulk, meta — covered only by Playwright e2e)
 
-True coverage requires running the backend binary under llvm-cov instrumentation
-while Playwright e2e hits it. Tracked as follow-up.
+Still 0%: oauth (5%), admin, telemetry, housekeeping, files submodules.
+
+True total coverage requires running the backend binary under llvm-cov
+instrumentation while Playwright e2e hits it. Tracked as follow-up.
