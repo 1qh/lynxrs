@@ -3337,3 +3337,142 @@ async fn email_verify_with_seeded_token() {
         .unwrap();
     assert!(u2.email_verified_at.is_some(), "email_verified_at not set");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn simu_admin_cli_missing_email_exits_2() {
+    use tokio::process::Command;
+    let bin = std::path::PathBuf::from(env!("CARGO_BIN_EXE_simu-admin"));
+    let out = Command::new(&bin)
+        .env("DATABASE_URL", "postgres://nope:nope@127.0.0.1:1/no")
+        .args(["promote"])
+        .output()
+        .await
+        .expect("spawn");
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("--email required"),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn simu_admin_promote_unknown_user_errors() {
+    use tokio::process::Command;
+    let app = spawn_app().await;
+    let pg_host = app._pg.get_host().await.unwrap();
+    let pg_port = app._pg.get_host_port_ipv4(5432).await.unwrap();
+    let url = format!("postgres://postgres:postgres@{pg_host}:{pg_port}/postgres");
+    let bin = std::path::PathBuf::from(env!("CARGO_BIN_EXE_simu-admin"));
+    let out = Command::new(&bin)
+        .env("DATABASE_URL", &url)
+        .args(["promote", "--email", "ghost@nowhere.io"])
+        .output()
+        .await
+        .expect("spawn");
+    assert!(!out.status.success());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn simu_admin_short_password_rejected() {
+    use tokio::process::Command;
+    let app = spawn_app().await;
+    let pg_host = app._pg.get_host().await.unwrap();
+    let pg_port = app._pg.get_host_port_ipv4(5432).await.unwrap();
+    let url = format!("postgres://postgres:postgres@{pg_host}:{pg_port}/postgres");
+    let bin = std::path::PathBuf::from(env!("CARGO_BIN_EXE_simu-admin"));
+    let out = Command::new(&bin)
+        .env("DATABASE_URL", &url)
+        .args(["create", "--email", "a@b.co", "--password", "short"])
+        .output()
+        .await
+        .expect("spawn");
+    assert_eq!(out.status.code(), Some(2));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn auth_resend_idempotent_for_already_verified() {
+    let app = spawn_app().await;
+    let email = nonce_email("verA");
+    let csrf = signup_with_csrf(&app, &email).await;
+
+    // Mark verified directly in DB
+    use sea_orm::{
+        ActiveModelTrait, ColumnTrait, ConnectOptions, Database, EntityTrait, QueryFilter, Set,
+    };
+    use simu_backend::entity::user;
+    let pg_host = app._pg.get_host().await.unwrap();
+    let pg_port = app._pg.get_host_port_ipv4(5432).await.unwrap();
+    let url = format!("postgres://postgres:postgres@{pg_host}:{pg_port}/postgres");
+    let db = Database::connect(ConnectOptions::new(url)).await.unwrap();
+    let u = user::Entity::find()
+        .filter(user::Column::Email.eq(email.to_lowercase()))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    let mut am: user::ActiveModel = u.into();
+    am.email_verified_at = Set(Some(chrono::Utc::now()));
+    am.update(&db).await.unwrap();
+
+    // Resend should still 202 (no-op for already-verified) without crashing.
+    let r = app
+        .client
+        .post(format!("{}/api/auth/email/resend", app.base))
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        r.status().is_success() || r.status() == StatusCode::ACCEPTED,
+        "resend already-verified: {}",
+        r.status()
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn list_audit_for_self_returns_recent_events() {
+    let app = spawn_app().await;
+    let email = nonce_email("audM");
+    let csrf = signup_with_csrf(&app, &email).await;
+    // Trigger a couple of events
+    app.client
+        .get(format!("{}/api/auth/me", app.base))
+        .send()
+        .await
+        .unwrap();
+    let r = app
+        .client
+        .get(format!("{}/api/me/audit?limit=10", app.base))
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let list: serde_json::Value = r.json().await.unwrap();
+    assert!(list.is_array());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn list_sessions_returns_login_events() {
+    let app = spawn_app().await;
+    let email = nonce_email("ses");
+    signup_with_csrf(&app, &email).await;
+    // Login again
+    app.client
+        .post(format!("{}/api/auth/login", app.base))
+        .json(&serde_json::json!({ "email": email, "password": "hunter2hunter2" }))
+        .send()
+        .await
+        .unwrap();
+    let r = app
+        .client
+        .get(format!("{}/api/me/sessions", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let list: serde_json::Value = r.json().await.unwrap();
+    assert!(list.is_array());
+    assert!(!list.as_array().unwrap().is_empty(), "no login events");
+}
