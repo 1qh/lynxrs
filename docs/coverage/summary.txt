@@ -1,40 +1,40 @@
 Coverage from `cargo llvm-cov --release --tests --summary-only -- --test-threads=2`.
-89 tests passing + 6 ignored.
+95 tests passing + 6 ignored.
 
-Progression this session (13.08% baseline):
-  +final:                       70.56% / 76.29%   (+57.48 region / +62.06 line)
+Final this session (from 13.08% baseline):
+  TOTAL: 70.79% region / 76.91% line / 65.26% fn
+  Δ: +57.71 region / +62.68 line / +49.77 fn
 
-Major modules (line cov):
-  webhooks             87%   (dispatcher spawned in full_app: file event → delivery)
-  bin/simu-admin       88%
+Major modules ≥50% line cov:
+  webhooks             87%   (dispatcher + delivery via tcp sink)
+  bin/simu-admin       88%   (subprocess + edge cases)
   files/meta           88%
   files/versions       86%
   files/stars          88%
   tokens               85%
   files/comments       81%
   files/tags           84%
-  auth                 ~75%
+  auth                 75%
   api                  72%
   orgs                 77%
   files/mod            76%
+  mfa                  70%
   files/trash          67%
   audit                63%
   admin                66%
   housekeeping         61%
-  mfa                  70%
   files/shares         55%
   files/presign        53%
   files/bulk           52%
+  error                73%   (IntoResponse mapping for all variants)
 
-Still 0% / very low:
+Still 0% / very low (engineering needed, not just tests):
 - telemetry: only invoked by main()
-- files/thumb: Playwright e2e (hand-crafted PNG not robust)
-- oauth/callback: needs OIDC mock provider
+- files/thumb: covered by Playwright e2e
+- oauth callback: needs OIDC mock provider
 
 Run notes:
-- `cargo test --tests --release -- --test-threads=2` (avoids colima container exhaustion)
+- `cargo test --tests --release -- --test-threads=2` (avoid colima exhaustion)
 - Production-layer tests share one app via OnceLock+Mutex+spawn_blocking
-  (Prometheus singleton)
-- spawn_app_full also spawns webhooks::spawn_dispatcher to exercise dispatch
-- axum::serve uses `into_make_service_with_connect_info::<SocketAddr>()` for
-  tower_governor peer-IP extraction
+- spawn_app_full also runs webhooks::spawn_dispatcher
+- axum::serve uses `into_make_service_with_connect_info::<SocketAddr>()`
