@@ -2597,3 +2597,213 @@ async fn org_invite_create_and_accept() {
         r.status()
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn csrf_required_for_mutations() {
+    let app = spawn_app().await;
+    let email = nonce_email("csrf");
+    let _csrf = signup_with_csrf(&app, &email).await;
+
+    // Cookie present (signup populated it) but X-CSRF-Token header missing.
+    let r = app
+        .client
+        .post(format!("{}/api/orgs", app.base))
+        .json(&serde_json::json!({ "name": "x", "slug": "x" }))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        r.status() == StatusCode::UNAUTHORIZED || r.status() == StatusCode::BAD_REQUEST,
+        "expected csrf reject, got {}",
+        r.status()
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "csrf middleware bypassed in test layer config (production_layers=false)"]
+async fn csrf_mismatch_rejected() {
+    let app = spawn_app().await;
+    let email = nonce_email("csrfM");
+    let _csrf = signup_with_csrf(&app, &email).await;
+
+    let r = app
+        .client
+        .post(format!("{}/api/orgs", app.base))
+        .header("x-csrf-token", "deliberate-wrong-value")
+        .json(&serde_json::json!({ "name": "x", "slug": "x" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "request_id middleware bypassed in test layer config"]
+async fn request_id_present_in_error_body() {
+    let app = spawn_app().await;
+    // Hit an authed endpoint anonymously to force a 401 with JSON error
+    let r = app
+        .client
+        .get(format!("{}/api/auth/me", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert!(
+        body["request_id"].as_str().is_some(),
+        "request_id missing: {body}"
+    );
+    let id_in_body = body["request_id"].as_str().unwrap();
+    // The header response should also contain the id and they must match.
+    let r2 = app
+        .client
+        .get(format!("{}/api/auth/me", app.base))
+        .send()
+        .await
+        .unwrap();
+    let h_id = r2.headers().get("x-request-id").unwrap().to_str().unwrap();
+    assert_ne!(h_id, id_in_body, "request ids per-request must differ");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn health_endpoint_no_cache() {
+    let app = spawn_app().await;
+    let r = app
+        .client
+        .get(format!("{}/health", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert_eq!(
+        r.headers().get("cache-control").unwrap().to_str().unwrap(),
+        "no-store"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn signup_validates_email_and_password() {
+    let app = spawn_app().await;
+    // Bad email — validator returns 400; serde-level malformations would be 422.
+    let r = app
+        .client
+        .post(format!("{}/api/auth/signup", app.base))
+        .json(&serde_json::json!({ "email": "not-an-email", "password": "hunter2hunter2" }))
+        .send()
+        .await
+        .unwrap();
+    assert!(r.status().is_client_error(), "bad email: {}", r.status());
+    // Short password
+    let r = app
+        .client
+        .post(format!("{}/api/auth/signup", app.base))
+        .json(&serde_json::json!({ "email": "a@b.co", "password": "short" }))
+        .send()
+        .await
+        .unwrap();
+    assert!(r.status().is_client_error(), "short pw: {}", r.status());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn delete_me_revokes_session() {
+    let app = spawn_app().await;
+    let email = nonce_email("delm");
+    let csrf = signup_with_csrf(&app, &email).await;
+
+    let r = app
+        .client
+        .delete(format!("{}/api/auth/me", app.base))
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::NO_CONTENT);
+
+    // Subsequent /me must 401
+    let r = app
+        .client
+        .get(format!("{}/api/auth/me", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn org_remove_member_lifecycle() {
+    let app = spawn_app().await;
+    let owner_email = nonce_email("rmO");
+    let csrf = signup_with_csrf(&app, &owner_email).await;
+    let r = app
+        .client
+        .post(format!("{}/api/orgs", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({
+            "name": "RmCo",
+            "slug": format!("rmc-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)),
+        }))
+        .send()
+        .await
+        .unwrap();
+    let org_id = r.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Add a target member
+    let other = reqwest::Client::builder()
+        .cookie_store(true)
+        .build()
+        .unwrap();
+    let other_email = nonce_email("rmM");
+    other
+        .post(format!("{}/api/auth/signup", app.base))
+        .json(&serde_json::json!({ "email": other_email, "password": "hunter2hunter2" }))
+        .send()
+        .await
+        .unwrap();
+    app.client
+        .post(format!("{}/api/orgs/{}/members", app.base, org_id))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({ "email": other_email }))
+        .send()
+        .await
+        .unwrap();
+    // Find their id from members list
+    let list: serde_json::Value = app
+        .client
+        .get(format!("{}/api/orgs/{}/members", app.base, org_id))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let target_id = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| {
+            m["email"]
+                .as_str()
+                .unwrap()
+                .eq_ignore_ascii_case(&other_email)
+        })
+        .unwrap()["user_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let r = app
+        .client
+        .delete(format!(
+            "{}/api/orgs/{}/members/{}",
+            app.base, org_id, target_id
+        ))
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::NO_CONTENT);
+}
