@@ -2,20 +2,29 @@ Coverage from `cargo llvm-cov --release --tests --summary-only`
 (integration + property tests; no e2e instrumentation yet).
 
 Progression this spike:
-  baseline:   13.08% regions / 14.23% lines / 15.49% fns
-  +org+token: 19.14% regions / 20.59% lines / 21.14% fns
-  +wh+mfa+f:  22.20% regions / 24.42% lines / 25.74% fns
+  baseline:       13.08% regions / 14.23% lines / 15.49% fns
+  +org+token:     19.14% / 20.59% / 21.14%
+  +wh+mfa+files:  22.20% / 24.42% / 25.74%
+  +bucket-mkdir:  30.68% / 34.14% / 33.82%   ← unlocks files submodules
 
-Module hot-spots after this round:
-  tokens.rs:       85.48%   (full bearer round-trip + scope)
-  orgs.rs:         49.91%   (create/list/members/stats)
-  webhooks.rs:     19.71%
-  mfa.rs:          16.67%
-  files/mod.rs:     7.81%   (json upload + delete + trash list)
-  files/* subs:    0.00%    (versions, tags, shares, comments, stars, presign,
-                              thumb, bulk, meta — covered only by Playwright e2e)
+Module hot-spots after bucket pre-creation in spawn_app:
+  files/stars.rs:      88.42%
+  files/tags.rs:       84.09%
+  files/comments.rs:   81.40%
+  tokens.rs:           85.48%
+  files/shares.rs:     55.27%
+  orgs.rs:             49.91%
+  files/mod.rs:        24.90%
+  webhooks.rs:         19.71%
+  mfa.rs:              16.67%
+  files/trash.rs:      18.84%
+  files/versions.rs:   14.22%
+  files/meta.rs:       12.32%
 
-Still 0%: oauth (5%), admin, telemetry, housekeeping, files submodules.
+Still 0%: files/bulk.rs, files/presign.rs, oauth (5%), admin, telemetry,
+housekeeping. The presign tests would need a working pre-signed URL flow;
+admin tests need a way to elevate role inside test (currently only 401 paths
+covered). Tracked as follow-ups.
 
-True total coverage requires running the backend binary under llvm-cov
-instrumentation while Playwright e2e hits it. Tracked as follow-up.
+Bucket-creation trick: testcontainers `s3.exec(["mkdir","-p","/data/test-bucket"])`
+seeds the filesystem layout MinIO interprets as a bucket. No SigV4 needed.

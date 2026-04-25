@@ -39,6 +39,17 @@ async fn spawn_app() -> App {
     let s3_port = s3.get_host_port_ipv4(9000).await.expect("s3 port");
     let s3_endpoint = format!("http://{s3_host}:{s3_port}");
 
+    // Pre-create the test bucket by seeding the filesystem layout MinIO scans on startup
+    // is too late post-start. Use mkdir via container exec — MinIO treats top-level dirs
+    // under /data as buckets. This is what testcontainers-modules/minio does internally.
+    let _ = s3
+        .exec(testcontainers::core::ExecCommand::new([
+            "mkdir",
+            "-p",
+            "/data/test-bucket",
+        ]))
+        .await;
+
     let mut opts = ConnectOptions::new(&database_url);
     opts.max_connections(5)
         .connect_timeout(std::time::Duration::from_secs(30))
@@ -837,8 +848,8 @@ async fn signup_and_upload(app: &App, prefix: &str) -> Option<(String, String)> 
         .await
         .unwrap();
     if !r.status().is_success() {
-        eprintln!("signup_and_upload SKIP ({}): storage unavailable", prefix);
-        return None;
+        let body = r.text().await.unwrap_or_default();
+        panic!("signup_and_upload {prefix} failed: {body}");
     }
     let body: serde_json::Value = r.json().await.unwrap();
     Some((csrf, body["id"].as_str().unwrap().to_string()))
