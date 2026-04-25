@@ -1,0 +1,97 @@
+# Staging-like compose: pulls a tagged image from GHCR (built by release.yml)
+# instead of building locally. Drop in production-grade env (HTTPS-only cookies,
+# strict rate limits, real OTLP, etc.). Run with:
+#
+#   docker compose -f infra/docker-compose.staging.yml up -d
+#
+# Override per-environment via .env.staging.
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: simu-staging-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-simu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${POSTGRES_DB:-simu}
+    volumes:
+      - simu_staging_pg:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-simu} -d ${POSTGRES_DB:-simu}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: simu-staging-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?required}
+    volumes:
+      - simu_staging_minio:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      retries: 10
+
+  nats:
+    image: nats:alpine
+    container_name: simu-staging-nats
+    restart: unless-stopped
+    command: ["--jetstream"]
+
+  backend:
+    image: ghcr.io/${REPO:-1qh/simu-spike}/backend:${SIMU_VERSION:-latest}
+    container_name: simu-staging-backend
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-simu}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-simu}
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET: ${S3_BUCKET:-simu-uploads}
+      SESSION_SECRET: ${SESSION_SECRET:?required}
+      BIND_ADDR: "0.0.0.0:8088"
+      NATS_URL: nats://nats:4222
+      RUST_LOG: ${RUST_LOG:-info,simu_backend=info}
+      OTLP_ENDPOINT: ${OTLP_ENDPOINT:-}
+      RATE_LIMIT_RPS: "20"
+      RATE_LIMIT_BURST: "60"
+      REQUIRE_ADMIN_MFA: "1"
+      USER_PURGE_GRACE_DAYS: "7"
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?required}
+      MAIL_FROM: ${MAIL_FROM:?required}
+      SMTP_HOST: ${SMTP_HOST:?required}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:?required}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?required}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8088/health"]
+      interval: 10s
+      retries: 10
+
+  caddy:
+    image: caddy:alpine
+    container_name: simu-staging-caddy
+    restart: unless-stopped
+    depends_on:
+      backend: { condition: service_healthy }
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./Caddyfile.staging:/etc/caddy/Caddyfile:ro
+      - simu_staging_caddy_data:/data
+      - simu_staging_caddy_config:/config
+
+volumes:
+  simu_staging_pg:
+  simu_staging_minio:
+  simu_staging_caddy_data:
+  simu_staging_caddy_config:

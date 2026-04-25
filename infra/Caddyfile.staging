@@ -1,0 +1,40 @@
+# Staging Caddyfile — auto-HTTPS via Let's Encrypt staging CA.
+{
+	email ${ACME_EMAIL:-admin@example.com}
+	# Use Let's Encrypt staging endpoint while bootstrapping; comment out for prod.
+	acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+${PUBLIC_HOST:-staging.simu.example} {
+	encode zstd gzip
+
+	# Brotli + sec headers
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+	}
+
+	handle /api/* {
+		reverse_proxy backend:8088
+	}
+	handle /events/* {
+		reverse_proxy backend:8088
+	}
+	handle /health {
+		reverse_proxy backend:8088
+	}
+	handle /metrics {
+		# Restrict /metrics to internal IPs only.
+		@internal remote_ip 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+		handle @internal {
+			reverse_proxy backend:8088
+		}
+		respond 403
+	}
+	handle {
+		# Static frontend bundle is served by the backend in dev; for staging
+		# you'd typically front a CDN. Fall back to backend so /docs etc. work.
+		reverse_proxy backend:8088
+	}
+}
