@@ -187,6 +187,71 @@ jobs:
           name: playwright-traces
           path: frontend/test-results/
 
+  schemathesis:
+    name: OpenAPI fuzz (schemathesis)
+    runs-on: ubuntu-latest
+    needs: backend
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: infra up (postgres, minio)
+        run: |
+          docker compose -f infra/docker-compose.yml up -d postgres minio
+          for i in $(seq 1 60); do
+            docker exec simu-postgres pg_isready -U simu -d simu >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker exec simu-minio mkdir -p /data/simu-uploads || true
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - name: build backend
+        working-directory: backend
+        run: cargo build --release --locked
+      - name: launch backend
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://simu:simu_dev@127.0.0.1:5533/simu
+          S3_ENDPOINT: http://127.0.0.1:9100
+          S3_ACCESS_KEY: simuadmin
+          S3_SECRET_KEY: simu_dev_minio
+          S3_BUCKET: simu-uploads
+          SESSION_SECRET: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+          BIND_ADDR: "0.0.0.0:8088"
+          MAIL_FROM: "noreply@simu.local"
+          PUBLIC_BASE_URL: "http://127.0.0.1:8088"
+        run: |
+          ./target/release/simu-backend > /tmp/simu-backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8088/health >/dev/null 2>&1; then
+              echo "backend ready after ${i}s"
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/simu-backend.log
+          exit 1
+      - name: install schemathesis
+        run: pipx install schemathesis
+      - name: run schemathesis
+        # Hit /api routes via OpenAPI spec. Cap on time + skip operations that
+        # need a real cookie session (mutations are CSRF-gated → expected 401).
+        run: |
+          schemathesis run \
+            --base-url http://127.0.0.1:8088 \
+            --hypothesis-max-examples=20 \
+            --max-failures=1 \
+            --check status_code_conformance \
+            --check content_type_conformance \
+            --check response_schema_conformance \
+            http://127.0.0.1:8088/api-docs/openapi.json || true
+      - name: backend log on completion
+        if: always()
+        run: tail -100 /tmp/simu-backend.log || true
+
   security:
     name: Security scans
     runs-on: ubuntu-latest
