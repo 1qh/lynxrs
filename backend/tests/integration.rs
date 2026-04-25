@@ -2815,14 +2815,17 @@ async fn org_remove_member_lifecycle() {
 async fn full_base() -> String {
     use std::sync::{Mutex, OnceLock};
     static FULL_BASE: OnceLock<String> = OnceLock::new();
-    static GUARD: Mutex<()> = Mutex::new(());
-    // Serialize boot via std::sync::Mutex but drop the guard before any .await.
-    let rx = {
-        let _g = GUARD.lock().expect("full lock");
+    static BOOT: Mutex<()> = Mutex::new(());
+    if let Some(b) = FULL_BASE.get() {
+        return b.clone();
+    }
+    // Run blocking boot off-runtime so we don't poison the test's tokio rt.
+    let s = tokio::task::spawn_blocking(|| {
+        let _g = BOOT.lock().expect("boot lock");
         if let Some(b) = FULL_BASE.get() {
             return b.clone();
         }
-        let (tx, rx) = tokio::sync::oneshot::channel::<String>();
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(2)
@@ -2837,11 +2840,13 @@ async fn full_base() -> String {
                 futures::future::pending::<()>().await;
             });
         });
-        rx
-    };
-    let base = rx.await.expect("full app boot");
-    let _ = FULL_BASE.set(base.clone());
-    base
+        let base = rx.recv().expect("full app boot");
+        let _ = FULL_BASE.set(base.clone());
+        base
+    })
+    .await
+    .expect("spawn_blocking");
+    s
 }
 fn full_client() -> Client {
     reqwest::Client::builder()
@@ -3088,4 +3093,107 @@ async fn full_unknown_route_404_via_fallback() {
         .await
         .unwrap();
     assert_eq!(r.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn oauth_status_unconfigured_by_default() {
+    let app = spawn_app().await;
+    let r = app
+        .client
+        .get(format!("{}/api/auth/oauth/status", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let body: serde_json::Value = r.json().await.unwrap();
+    // No OAUTH_GOOGLE_* env in tests → not configured.
+    assert_eq!(body["google"].as_bool().unwrap(), false);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn oauth_start_without_config_400() {
+    let app = spawn_app().await;
+    let r = app
+        .client
+        .get(format!("{}/api/auth/oauth/google/start", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn oauth_callback_without_config_400() {
+    let app = spawn_app().await;
+    let r = app
+        .client
+        .get(format!(
+            "{}/api/auth/oauth/google/callback?code=x&state=y",
+            app.base
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn me_change_password_then_login_again() {
+    // Different angle: prove /me round-trips after rotation lands.
+    let app = spawn_app().await;
+    let email = nonce_email("rot");
+    let csrf = signup_with_csrf(&app, &email).await;
+    let r = app
+        .client
+        .post(format!("{}/api/auth/password/change", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({
+            "current_password": "hunter2hunter2",
+            "new_password": "newhunter2hunter2",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(r.status().is_success());
+    let r = app
+        .client
+        .get(format!("{}/api/auth/me", app.base))
+        .send()
+        .await
+        .unwrap();
+    // Cookie-bound session stays valid for current device after change_password.
+    assert_eq!(r.status(), StatusCode::OK);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn login_lockout_after_repeated_bad_passwords() {
+    let app = spawn_app().await;
+    let email = nonce_email("lock");
+    signup_with_csrf(&app, &email).await;
+    let attacker = reqwest::Client::builder()
+        .cookie_store(true)
+        .build()
+        .unwrap();
+    // First 5 bad attempts return 401; subsequent return same/locked.
+    for _ in 0..5 {
+        let r = attacker
+            .post(format!("{}/api/auth/login", app.base))
+            .json(&serde_json::json!({ "email": email, "password": "wrongwrongwrong" }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+    }
+    // 6th attempt with correct password should be locked out.
+    let r = attacker
+        .post(format!("{}/api/auth/login", app.base))
+        .json(&serde_json::json!({ "email": email, "password": "hunter2hunter2" }))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        r.status() == StatusCode::UNAUTHORIZED || r.status() == StatusCode::LOCKED,
+        "post-lockout: {}",
+        r.status()
+    );
 }
