@@ -25,7 +25,7 @@ pub fn spawn(
     });
 }
 
-async fn run_once(
+pub async fn run_once(
     db: &DatabaseConnection,
     storage: &dyn object_store::ObjectStore,
 ) -> anyhow::Result<()> {

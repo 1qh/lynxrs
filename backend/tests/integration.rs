@@ -1953,3 +1953,264 @@ async fn webhook_enable_after_disable() {
         r.status()
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn simu_admin_cli_create_then_promote() {
+    use tokio::process::Command;
+    let app = spawn_app().await;
+    let pg_host = app._pg.get_host().await.unwrap();
+    let pg_port = app._pg.get_host_port_ipv4(5432).await.unwrap();
+    let url = format!("postgres://postgres:postgres@{pg_host}:{pg_port}/postgres");
+
+    // Locate the binary built alongside this test (dev or release profile).
+    let bin = std::path::PathBuf::from(env!("CARGO_BIN_EXE_simu-admin"));
+    assert!(bin.exists(), "binary missing: {:?}", bin);
+
+    let email = nonce_email("cli");
+    // create
+    let out = Command::new(&bin)
+        .env("DATABASE_URL", &url)
+        .args(["create", "--email", &email, "--password", "hunter2hunter2"])
+        .output()
+        .await
+        .expect("spawn create");
+    assert!(
+        out.status.success(),
+        "create failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).contains("created admin"));
+
+    // create again → exit 1 (already exists)
+    let out = Command::new(&bin)
+        .env("DATABASE_URL", &url)
+        .args(["create", "--email", &email, "--password", "hunter2hunter2"])
+        .output()
+        .await
+        .expect("spawn create dup");
+    assert_eq!(out.status.code(), Some(1));
+
+    // promote (user exists, this just re-sets role=admin)
+    let out = Command::new(&bin)
+        .env("DATABASE_URL", &url)
+        .args(["promote", "--email", &email])
+        .output()
+        .await
+        .expect("spawn promote");
+    assert!(out.status.success());
+    assert!(String::from_utf8_lossy(&out.stdout).contains("promoted to admin"));
+
+    // missing args → exit 2
+    let out = Command::new(&bin)
+        .env("DATABASE_URL", &url)
+        .args(["unknown-cmd", "--email", "x@x"])
+        .output()
+        .await
+        .expect("spawn unknown");
+    assert_eq!(out.status.code(), Some(2));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn housekeeping_run_once_purges_expired() {
+    use sea_orm::{ActiveModelTrait, ConnectOptions, Database, Set};
+    use simu_backend::entity::{password_reset, user};
+
+    let app = spawn_app().await;
+    let pg_host = app._pg.get_host().await.unwrap();
+    let pg_port = app._pg.get_host_port_ipv4(5432).await.unwrap();
+    let url = format!("postgres://postgres:postgres@{pg_host}:{pg_port}/postgres");
+    let db = Database::connect(ConnectOptions::new(url)).await.unwrap();
+
+    // Create a user + an expired password_reset row.
+    use simu_backend::entity::user as user_e;
+    let uid = uuid::Uuid::now_v7();
+    user_e::ActiveModel {
+        id: Set(uid),
+        email: Set(format!(
+            "hk-{}@x.com",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        )),
+        password_hash: Set("$argon2id$v=19$m=19456,t=2,p=1$YQ$YQ".into()),
+        role: Set("user".into()),
+        email_verified_at: Set(None),
+        session_version: Set(0),
+        created_at: Set(chrono::Utc::now()),
+        updated_at: Set(chrono::Utc::now()),
+        totp_secret: Set(None),
+        totp_enabled: Set(false),
+        failed_login_count: Set(0),
+        locked_until: Set(None),
+        display_name: Set(None),
+        avatar_url: Set(None),
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    password_reset::ActiveModel {
+        id: Set(uuid::Uuid::now_v7()),
+        user_id: Set(uid),
+        token_hash: Set("expired-token".into()),
+        expires_at: Set(chrono::Utc::now() - chrono::Duration::hours(1)),
+        used_at: Set(None),
+        created_at: Set(chrono::Utc::now() - chrono::Duration::hours(2)),
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    use object_store::aws::AmazonS3Builder;
+    let s3 = AmazonS3Builder::new()
+        .with_endpoint(format!(
+            "http://{}:{}",
+            app._s3.get_host().await.unwrap(),
+            app._s3.get_host_port_ipv4(9000).await.unwrap()
+        ))
+        .with_access_key_id("minioadmin")
+        .with_secret_access_key("minioadmin")
+        .with_bucket_name("test-bucket")
+        .with_region("us-east-1")
+        .with_allow_http(true)
+        .build()
+        .unwrap();
+
+    simu_backend::housekeeping::run_once(&db, &s3)
+        .await
+        .unwrap();
+
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+    let remaining = password_reset::Entity::find()
+        .filter(password_reset::Column::TokenHash.eq("expired-token"))
+        .one(&db)
+        .await
+        .unwrap();
+    assert!(remaining.is_none(), "expired pw reset not purged");
+    let _ = user::Entity::delete_by_id(uid).exec(&db).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn auth_change_password_rotates_login() {
+    let app = spawn_app().await;
+    let email = nonce_email("cpw");
+    let csrf = signup_with_csrf(&app, &email).await;
+
+    let r = app
+        .client
+        .post(format!("{}/api/auth/password/change", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({
+            "current_password": "hunter2hunter2",
+            "new_password": "newhunter2hunter2",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(r.status().is_success(), "change_password: {}", r.status());
+
+    // Old password should now fail
+    let fresh = reqwest::Client::builder()
+        .cookie_store(true)
+        .build()
+        .unwrap();
+    let r = fresh
+        .post(format!("{}/api/auth/login", app.base))
+        .json(&serde_json::json!({ "email": email, "password": "hunter2hunter2" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+
+    // New password works
+    let r = fresh
+        .post(format!("{}/api/auth/login", app.base))
+        .json(&serde_json::json!({ "email": email, "password": "newhunter2hunter2" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn auth_forgot_password_returns_202_regardless() {
+    let app = spawn_app().await;
+    // Unknown email → still 202 (no enumeration leak)
+    let r = app
+        .client
+        .post(format!("{}/api/auth/password/forgot", app.base))
+        .json(&serde_json::json!({ "email": "ghost@example.com" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::ACCEPTED);
+
+    // Known email → also 202
+    let email = nonce_email("fpw");
+    signup_with_csrf(&app, &email).await;
+    let r = app
+        .client
+        .post(format!("{}/api/auth/password/forgot", app.base))
+        .json(&serde_json::json!({ "email": email }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::ACCEPTED);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn auth_update_profile_persists() {
+    let app = spawn_app().await;
+    let email = nonce_email("prof");
+    let csrf = signup_with_csrf(&app, &email).await;
+
+    let r = app
+        .client
+        .patch(format!("{}/api/auth/me", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({
+            "display_name": "Lai Quang Huy",
+            "avatar_url": "https://example.com/a.png",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(body["display_name"].as_str().unwrap(), "Lai Quang Huy");
+    assert_eq!(
+        body["avatar_url"].as_str().unwrap(),
+        "https://example.com/a.png"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn auth_email_resend_returns_202() {
+    let app = spawn_app().await;
+    let email = nonce_email("rsd");
+    let csrf = signup_with_csrf(&app, &email).await;
+    let r = app
+        .client
+        .post(format!("{}/api/auth/email/resend", app.base))
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        r.status() == StatusCode::ACCEPTED || r.status() == StatusCode::NO_CONTENT,
+        "resend: {}",
+        r.status()
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn auth_email_verify_rejects_bad_token() {
+    let app = spawn_app().await;
+    let r = app
+        .client
+        .post(format!("{}/api/auth/email/verify", app.base))
+        .json(&serde_json::json!({ "token": "obviously-not-a-real-token" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+}
