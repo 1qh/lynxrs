@@ -11,27 +11,8 @@ jobs:
   backend:
     name: Rust backend
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:alpine
-        env:
-          POSTGRES_USER: simu
-          POSTGRES_PASSWORD: simu
-          POSTGRES_DB: simu
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U simu" --health-interval 5s
-          --health-timeout 3s --health-retries 10
-      minio:
-        image: minio/minio:latest
-        env:
-          MINIO_ROOT_USER: simuadmin
-          MINIO_ROOT_PASSWORD: simu_dev_minio
-        ports: ["9000:9000"]
-        options: >-
-          --health-cmd "mc ready local" --health-interval 10s
-          --health-retries 10
-
+    # Tests use testcontainers — they spawn their own postgres + minio per test,
+    # so no service containers needed here.
     defaults:
       run:
         working-directory: backend
@@ -143,10 +124,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: gitleaks
         uses: gitleaks/gitleaks-action@v2
-        with:
-          config-path: .gitleaks.toml
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml
       - name: trivy fs
         uses: aquasecurity/trivy-action@master
         with:
