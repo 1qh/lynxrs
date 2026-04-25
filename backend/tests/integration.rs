@@ -1666,3 +1666,166 @@ async fn upload_image_creates_thumbnail() {
     }
     assert!(got, "thumbnail never appeared");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mfa_full_activate_flow() {
+    use totp_rs::{Algorithm, TOTP};
+    let app = spawn_app().await;
+    let email = nonce_email("mfaA");
+    let csrf = signup_with_csrf(&app, &email).await;
+
+    // Enroll
+    let r = app
+        .client
+        .post(format!("{}/api/mfa/enroll", app.base))
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = r.json().await.unwrap();
+    let secret = body["secret"].as_str().unwrap().to_string();
+
+    // Compute current TOTP
+    let totp = TOTP::new(
+        Algorithm::SHA1,
+        6,
+        1,
+        30,
+        totp_rs::Secret::Encoded(secret).to_bytes().unwrap(),
+        None,
+        "simu".to_string(),
+    )
+    .unwrap();
+    let code = totp.generate_current().unwrap();
+
+    // Activate
+    let r = app
+        .client
+        .post(format!("{}/api/mfa/activate", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({ "code": code }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::NO_CONTENT, "mfa activate");
+
+    // Disable with current code
+    let code2 = totp.generate_current().unwrap();
+    let r = app
+        .client
+        .post(format!("{}/api/mfa/disable", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({ "code": code2 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::NO_CONTENT, "mfa disable");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn admin_audit_list_csv() {
+    let app = spawn_app().await;
+    let email = nonce_email("audCsv");
+    let csrf = signup_with_csrf(&app, &email).await;
+    promote_to_admin(&app, &email).await;
+
+    // JSON list
+    let r = app
+        .client
+        .get(format!("{}/api/admin/audit?limit=10", app.base))
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let _: serde_json::Value = r.json().await.unwrap();
+
+    // CSV export
+    let r = app
+        .client
+        .get(format!("{}/api/admin/audit.csv?limit=10", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let txt = r.text().await.unwrap();
+    assert!(txt.contains(",") || txt.is_empty(), "csv: {txt}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn admin_user_detail_returns_user() {
+    let app = spawn_app().await;
+    let email = nonce_email("detl");
+    let csrf = signup_with_csrf(&app, &email).await;
+    promote_to_admin(&app, &email).await;
+
+    // Find the admin's own id via /api/auth/me
+    let me: serde_json::Value = app
+        .client
+        .get(format!("{}/api/auth/me", app.base))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let uid = me["id"].as_str().unwrap();
+
+    let r = app
+        .client
+        .get(format!("{}/api/admin/users/{}/detail", app.base, uid))
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK, "user_detail");
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert!(body["user"].is_object() || body["email"].is_string());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn admin_list_all_orgs_and_webhooks() {
+    let app = spawn_app().await;
+    let email = nonce_email("aaow");
+    let csrf = signup_with_csrf(&app, &email).await;
+    promote_to_admin(&app, &email).await;
+
+    // Create an org so list isn't empty
+    let r = app
+        .client
+        .post(format!("{}/api/orgs", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({
+            "name": "AdminCo",
+            "slug": format!("ac-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)),
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::CREATED);
+
+    // Create a webhook
+    app.client
+        .post(format!("{}/api/webhooks", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({ "url": "https://example.com/h" }))
+        .send()
+        .await
+        .unwrap();
+
+    // List all
+    let r = app
+        .client
+        .get(format!("{}/api/admin/orgs", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let r = app
+        .client
+        .get(format!("{}/api/admin/webhooks", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+}

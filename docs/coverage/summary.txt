@@ -1,5 +1,5 @@
 Coverage from `cargo llvm-cov --release --tests --summary-only`.
-41 tests passing (3 ignored: marker, scope-mw, image-thumbnail).
+45 tests passing + 3 ignored.
 
 Progression:
   baseline:           13.08% regions / 14.23% lines
@@ -7,28 +7,28 @@ Progression:
   +wh+mfa:            22.20% / 24.42%
   +bucket-mkdir:      30.68% / 34.14%
   +bulk+presign+meta: 35.51% / 39.26%
-  +admin+versions:    41.12% / 45.30%   ← latest
+  +admin+versions:    41.12% / 45.30%
+  +mfa-totp+admin:    44.49% / 49.46%   ← latest
 
-Module standings (>10%):
-  files/meta.rs        88.04%
-  files/versions.rs    86.21%
-  files/stars.rs       88.42%
-  tokens.rs            85.48%
-  files/comments.rs    81.40%
-  files/tags.rs        84.09%
-  files/trash.rs       66.67%
-  audit.rs             63.45%
-  files/shares.rs      55.27%
-  files/presign.rs     52.70%
-  files/bulk.rs        51.96%
-  orgs.rs              49.91%
+Module standings:
+  files/meta.rs        88%
+  files/versions.rs    86%
+  files/stars.rs       88%
+  tokens.rs            85%
+  files/comments.rs    81%
+  files/tags.rs        84%
+  files/trash.rs       67%
+  audit.rs             63%
+  admin.rs             66%
+  files/shares.rs      55%
+  files/presign.rs     53%
+  files/bulk.rs        52%
+  orgs.rs              50%
+  mfa.rs               48%
   auth.rs              ~43%
-  mailer.rs            ~37%
-  admin.rs             33.83%
   api.rs               ~33%
-  files/mod.rs         24.90%
-  webhooks.rs          19.71%
-  mfa.rs               16.67%
+  files/mod.rs         25%
+  webhooks.rs          20%
 
-Still 0% / very low: telemetry, housekeeping, oauth (5%), bin/simu-admin (CLI),
-files/thumb (4.59%; flaky test ignored). All tracked.
+Still 0% / very low: telemetry, housekeeping, oauth (5%, needs OIDC), bin/simu-admin (CLI),
+files/thumb (4.59%; flaky test).
