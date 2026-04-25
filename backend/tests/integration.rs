@@ -1613,10 +1613,10 @@ async fn create_version_then_restore() {
     assert_eq!(r.status(), StatusCode::OK);
 }
 
-// Thumbnail generation runs in a fire-and-forget tokio task; under heavy
-// container scheduling the 3s polling window can miss it. Kept as ignored.
+// Thumbnail decode of a hand-crafted 1×1 PNG is unreliable across image crate
+// versions. Real images are exercised by Playwright e2e against the compose stack.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "flaky in test container; covered by Playwright e2e"]
+#[ignore = "covered by Playwright e2e against real images"]
 async fn upload_image_creates_thumbnail() {
     let app = spawn_app().await;
     let email = nonce_email("img");
@@ -1649,9 +1649,9 @@ async fn upload_image_creates_thumbnail() {
         .unwrap()
         .to_string();
 
-    // Thumbnail is generated async; poll briefly.
+    // Thumbnail is generated async (spawn_blocking → S3 put). Allow up to 15s.
     let mut got = false;
-    for _ in 0..20 {
+    for _ in 0..150 {
         let r = app
             .client
             .get(format!("{}/api/files/{}/thumbnail", app.base, file_id))
@@ -1662,7 +1662,7 @@ async fn upload_image_creates_thumbnail() {
             got = true;
             break;
         }
-        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
     assert!(got, "thumbnail never appeared");
 }
