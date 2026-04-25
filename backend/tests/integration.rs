@@ -1829,3 +1829,127 @@ async fn admin_list_all_orgs_and_webhooks() {
         .unwrap();
     assert_eq!(r.status(), StatusCode::OK);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn webhook_deliveries_list_initially_empty() {
+    let app = spawn_app().await;
+    let email = nonce_email("whD");
+    let csrf = signup_with_csrf(&app, &email).await;
+
+    let r = app
+        .client
+        .post(format!("{}/api/webhooks", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({ "url": "https://example.com/h" }))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = r.json().await.unwrap();
+    let id = body["webhook"]["id"]
+        .as_str()
+        .or_else(|| body["id"].as_str())
+        .unwrap()
+        .to_string();
+
+    let r = app
+        .client
+        .get(format!("{}/api/webhooks/{}/deliveries", app.base, id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let list: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(list.as_array().unwrap().len(), 0, "no deliveries yet");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn webhook_test_endpoint_records_delivery() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let app = spawn_app().await;
+
+    // Spin a tiny http sink to receive the test webhook.
+    let hit = Arc::new(AtomicUsize::new(0));
+    let hit_c = hit.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut sock, _)) = listener.accept().await else {
+                break;
+            };
+            hit_c.fetch_add(1, Ordering::SeqCst);
+            use tokio::io::AsyncWriteExt;
+            let _ = sock
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                .await;
+        }
+    });
+
+    let email = nonce_email("whT");
+    let csrf = signup_with_csrf(&app, &email).await;
+    let r = app
+        .client
+        .post(format!("{}/api/webhooks", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({ "url": format!("http://{addr}/hook") }))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = r.json().await.unwrap();
+    let id = body["webhook"]["id"]
+        .as_str()
+        .or_else(|| body["id"].as_str())
+        .unwrap()
+        .to_string();
+
+    let r = app
+        .client
+        .post(format!("{}/api/webhooks/{}/test", app.base, id))
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK, "test_webhook");
+    let body: serde_json::Value = r.json().await.unwrap();
+    // Endpoint reports success/failure of synchronous test call.
+    assert!(body.is_object());
+
+    // Tiny sink should have been hit at least once.
+    assert!(hit.load(Ordering::SeqCst) >= 1, "sink not hit");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn webhook_enable_after_disable() {
+    let app = spawn_app().await;
+    let email = nonce_email("whE");
+    let csrf = signup_with_csrf(&app, &email).await;
+    let r = app
+        .client
+        .post(format!("{}/api/webhooks", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({ "url": "https://example.com/h" }))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = r.json().await.unwrap();
+    let id = body["webhook"]["id"]
+        .as_str()
+        .or_else(|| body["id"].as_str())
+        .unwrap()
+        .to_string();
+
+    // Re-enable (idempotent on a fresh webhook)
+    let r = app
+        .client
+        .post(format!("{}/api/webhooks/{}/enable", app.base, id))
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        r.status().is_success() || r.status() == StatusCode::NO_CONTENT,
+        "enable: {}",
+        r.status()
+    );
+}

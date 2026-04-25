@@ -1,16 +1,17 @@
 Coverage from `cargo llvm-cov --release --tests --summary-only`.
-45 tests passing + 3 ignored.
+48 tests passing + 3 ignored.
 
-Progression:
-  baseline:           13.08% regions / 14.23% lines
+Progression this session:
+  baseline:           13.08% regions / 14.23% lines / 15.49% fns
   +org+token:         19.14% / 20.59%
   +wh+mfa:            22.20% / 24.42%
   +bucket-mkdir:      30.68% / 34.14%
   +bulk+presign+meta: 35.51% / 39.26%
   +admin+versions:    41.12% / 45.30%
-  +mfa-totp+admin:    44.49% / 49.46%   ← latest
+  +mfa-totp+admin:    44.49% / 49.46%
+  +webhook deliveries 46.16% / 51.33%   ← latest (LINE coverage now > 50%)
 
-Module standings:
+Major modules (sorted by line cov):
   files/meta.rs        88%
   files/versions.rs    86%
   files/stars.rs       88%
@@ -23,12 +24,12 @@ Module standings:
   files/shares.rs      55%
   files/presign.rs     53%
   files/bulk.rs        52%
+  webhooks.rs          51%
   orgs.rs              50%
   mfa.rs               48%
   auth.rs              ~43%
   api.rs               ~33%
   files/mod.rs         25%
-  webhooks.rs          20%
 
-Still 0% / very low: telemetry, housekeeping, oauth (5%, needs OIDC), bin/simu-admin (CLI),
-files/thumb (4.59%; flaky test).
+Still 0% / very low: telemetry, housekeeping, oauth (5%, OIDC needed),
+bin/simu-admin (CLI binary), files/thumb (4.59%, flaky).
