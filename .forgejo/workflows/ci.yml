@@ -78,7 +78,18 @@ jobs:
         with:
           bun-version: latest
       - name: infra up (postgres, minio, nats, mailpit)
-        run: docker compose -f infra/docker-compose.yml up -d postgres minio nats mailpit
+        run: |
+          docker compose -f infra/docker-compose.yml up -d postgres minio nats mailpit
+          # Wait for postgres health
+          for i in $(seq 1 60); do
+            if docker compose -f infra/docker-compose.yml ps postgres | grep -q "healthy"; then
+              echo "postgres healthy"
+              break
+            fi
+            sleep 2
+          done
+          # Pre-create the bucket via mc (minio's storage layout: dir under /data is a bucket)
+          docker exec simu-minio sh -c 'mkdir -p /data/simu-uploads' || true
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.95"
