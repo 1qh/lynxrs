@@ -3196,3 +3196,144 @@ async fn login_lockout_after_repeated_bad_passwords() {
         r.status()
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn password_reset_with_seeded_token() {
+    use sea_orm::{ActiveModelTrait, ConnectOptions, Database, Set};
+    use sha2::Digest;
+    use simu_backend::entity::{password_reset, user};
+
+    let app = spawn_app().await;
+    let email = nonce_email("rst");
+    signup_with_csrf(&app, &email).await;
+
+    // Look up the user via direct DB.
+    let pg_host = app._pg.get_host().await.unwrap();
+    let pg_port = app._pg.get_host_port_ipv4(5432).await.unwrap();
+    let url = format!("postgres://postgres:postgres@{pg_host}:{pg_port}/postgres");
+    let db = Database::connect(ConnectOptions::new(url)).await.unwrap();
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+    let u = user::Entity::find()
+        .filter(user::Column::Email.eq(email.to_lowercase()))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Seed a known token directly.
+    let plaintext = "test-reset-token-known-12345";
+    let token_hash = hex::encode(sha2::Sha256::digest(plaintext.as_bytes()));
+    password_reset::ActiveModel {
+        id: Set(uuid::Uuid::now_v7()),
+        user_id: Set(u.id),
+        token_hash: Set(token_hash),
+        expires_at: Set(chrono::Utc::now() + chrono::Duration::hours(1)),
+        used_at: Set(None),
+        created_at: Set(chrono::Utc::now()),
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    // Reset via API
+    let r = app
+        .client
+        .post(format!("{}/api/auth/password/reset", app.base))
+        .json(&serde_json::json!({
+            "token": plaintext,
+            "new_password": "newhunter2hunter2",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(r.status().is_success() || r.status() == StatusCode::NO_CONTENT);
+
+    // Old password rejected
+    let fresh = reqwest::Client::builder()
+        .cookie_store(true)
+        .build()
+        .unwrap();
+    let r = fresh
+        .post(format!("{}/api/auth/login", app.base))
+        .json(&serde_json::json!({ "email": email, "password": "hunter2hunter2" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+    // New password accepted
+    let r = fresh
+        .post(format!("{}/api/auth/login", app.base))
+        .json(&serde_json::json!({ "email": email, "password": "newhunter2hunter2" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+
+    // Token can't be reused
+    let r = app
+        .client
+        .post(format!("{}/api/auth/password/reset", app.base))
+        .json(&serde_json::json!({
+            "token": plaintext,
+            "new_password": "yetanothernewpw",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::BAD_REQUEST, "token replay");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn email_verify_with_seeded_token() {
+    use sea_orm::{
+        ActiveModelTrait, ColumnTrait, ConnectOptions, Database, EntityTrait, QueryFilter, Set,
+    };
+    use sha2::Digest;
+    use simu_backend::entity::{email_verification, user};
+
+    let app = spawn_app().await;
+    let email = nonce_email("ev");
+    signup_with_csrf(&app, &email).await;
+
+    let pg_host = app._pg.get_host().await.unwrap();
+    let pg_port = app._pg.get_host_port_ipv4(5432).await.unwrap();
+    let url = format!("postgres://postgres:postgres@{pg_host}:{pg_port}/postgres");
+    let db = Database::connect(ConnectOptions::new(url)).await.unwrap();
+    let u = user::Entity::find()
+        .filter(user::Column::Email.eq(email.to_lowercase()))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let plaintext = "verify-token-known-67890";
+    let token_hash = hex::encode(sha2::Sha256::digest(plaintext.as_bytes()));
+    email_verification::ActiveModel {
+        id: Set(uuid::Uuid::now_v7()),
+        user_id: Set(u.id),
+        token_hash: Set(token_hash),
+        expires_at: Set(chrono::Utc::now() + chrono::Duration::hours(24)),
+        used_at: Set(None),
+        created_at: Set(chrono::Utc::now()),
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    let r = app
+        .client
+        .post(format!("{}/api/auth/email/verify", app.base))
+        .json(&serde_json::json!({ "token": plaintext }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::NO_CONTENT, "email verify");
+
+    // user.email_verified_at should be set now
+    let u2 = user::Entity::find_by_id(u.id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(u2.email_verified_at.is_some(), "email_verified_at not set");
+}
