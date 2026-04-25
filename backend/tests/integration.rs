@@ -1053,3 +1053,185 @@ async fn file_rename_persists() {
     let body: serde_json::Value = r.json().await.unwrap();
     assert_eq!(body["filename"].as_str().unwrap(), "renamed.txt");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn bulk_tag_and_delete() {
+    let app = spawn_app().await;
+    let Some((csrf, f1)) = signup_and_upload(&app, "blk1").await else {
+        return;
+    };
+    // Upload a second file under the same user
+    use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
+    let r = app
+        .client
+        .post(format!("{}/api/files/json", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({
+            "filename": "two.txt", "content_type": "text/plain",
+            "data_base64": B64.encode("two"),
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::CREATED);
+    let f2 = r.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Bulk tag both
+    let r = app
+        .client
+        .post(format!("{}/api/files/bulk", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({
+            "action": "tag", "ids": [f1, f2], "tag": "batch"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK, "bulk tag");
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(body["affected"].as_u64().unwrap(), 2);
+
+    // Bulk soft-delete
+    let r = app
+        .client
+        .post(format!("{}/api/files/bulk", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({
+            "action": "delete", "ids": [f1, f2]
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(body["affected"].as_u64().unwrap(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn presign_get_returns_signed_url() {
+    let app = spawn_app().await;
+    let Some((_csrf, file_id)) = signup_and_upload(&app, "psg").await else {
+        return;
+    };
+    let r = app
+        .client
+        .get(format!("{}/api/files/{}/presign", app.base, file_id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let body: serde_json::Value = r.json().await.unwrap();
+    let url = body["url"].as_str().unwrap();
+    assert!(url.contains("X-Amz-Signature"), "signed url: {url}");
+    assert!(body["expires_in_seconds"].as_u64().unwrap() > 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn presign_upload_returns_put_url_and_pending_row() {
+    let app = spawn_app().await;
+    let email = nonce_email("psgu");
+    let csrf = signup_with_csrf(&app, &email).await;
+
+    let r = app
+        .client
+        .post(format!("{}/api/files/presign-upload", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({
+            "filename": "big.bin",
+            "content_type": "application/octet-stream",
+            "size_bytes": 1024,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert!(
+        body["put_url"]
+            .as_str()
+            .unwrap()
+            .contains("X-Amz-Signature")
+    );
+    assert!(body["file_id"].as_str().is_some());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn me_stats_reports_files_after_upload() {
+    let app = spawn_app().await;
+    let Some((_csrf, _file_id)) = signup_and_upload(&app, "stats").await else {
+        return;
+    };
+    let r = app
+        .client
+        .get(format!("{}/api/me/stats", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(body["files"].as_u64().unwrap(), 1);
+    assert_eq!(body["trashed"].as_u64().unwrap(), 0);
+    assert!(body["total_bytes"].as_i64().unwrap() > 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn me_quota_reflects_usage() {
+    let app = spawn_app().await;
+    let Some((_csrf, _f)) = signup_and_upload(&app, "qta").await else {
+        return;
+    };
+    let r = app
+        .client
+        .get(format!("{}/api/me/quota", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert!(body["used_bytes"].as_i64().unwrap() > 0);
+    assert_eq!(body["limit_bytes"].as_i64().unwrap(), 500 * 1024 * 1024);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn me_export_returns_json_dump() {
+    let app = spawn_app().await;
+    let Some((_csrf, _f)) = signup_and_upload(&app, "exp").await else {
+        return;
+    };
+    let r = app
+        .client
+        .get(format!("{}/api/me/export", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let txt = r.text().await.unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&txt).expect("valid json");
+    assert!(!parsed["files"].as_array().unwrap().is_empty());
+    assert!(parsed["user"].is_object());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_verify_matches_stored_sha() {
+    let app = spawn_app().await;
+    let Some((_csrf, file_id)) = signup_and_upload(&app, "vrf").await else {
+        return;
+    };
+    let r = app
+        .client
+        .post(format!("{}/api/files/{}/verify", app.base, file_id))
+        .header("x-csrf-token", &_csrf)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert!(body["ok"].as_bool().unwrap());
+    assert_eq!(
+        body["stored"].as_str().unwrap(),
+        body["computed"].as_str().unwrap()
+    );
+}
