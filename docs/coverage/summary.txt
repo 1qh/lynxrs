@@ -1,11 +1,13 @@
 Coverage from `cargo llvm-cov --release --tests --summary-only`.
-63 tests passing + 3 ignored.
+75 tests passing + 5 ignored.
 
 Progression this session:
-  baseline:           13.08% regions / 14.23% lines
-  +final:             59.66% / 66.17%   (+46.58 / +51.94 absolute)
+  baseline:                     13.08% regions / 14.23% lines
+  +full middleware (csrf,
+   request-id, scope, governor,
+   prometheus, security headers): 65.96% / 71.88%   ← latest
 
-Major modules (>50%):
+Major modules (>50% line cov):
   bin/simu-admin       88%
   files/meta           88%
   files/versions       86%
@@ -13,17 +15,22 @@ Major modules (>50%):
   tokens               85%
   files/comments       81%
   files/tags           84%
+  auth                 74%
+  api                  72%   (+38 from full middleware tests)
   orgs                 77%
   files/mod            76%
   files/trash          67%
   audit                63%
   admin                66%
   housekeeping         61%
-  files/mod            76%   (multipart, head, range, pagination, describe,
-                              download-zip, move)
-  auth                 56%
+  mfa                  70%
   files/shares         55%
   files/presign        53%
   files/bulk           52%
   webhooks             51%
-  mfa                  70%
+
+Still 0% / very low: telemetry, oauth (5%, OIDC needed), files/thumb (5%; flaky).
+
+Production-layer tests run via shared OnceLock+Mutex spawn (Prometheus is process-
+global). axum::serve uses into_make_service_with_connect_info::<SocketAddr>() so
+tower_governor can extract peer IP.

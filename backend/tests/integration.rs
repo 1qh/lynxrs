@@ -2807,3 +2807,285 @@ async fn org_remove_member_lifecycle() {
         .unwrap();
     assert_eq!(r.status(), StatusCode::NO_CONTENT);
 }
+
+// Spawn-app variant with full production middleware stack. Prometheus uses
+// process-global state (panics on second init), so we share ONE instance
+// across all full-stack tests via a OnceCell. Tests construct their own
+// cookie-bearing reqwest client to avoid jar contamination.
+async fn full_base() -> String {
+    use std::sync::{Mutex, OnceLock};
+    static FULL_BASE: OnceLock<String> = OnceLock::new();
+    static GUARD: Mutex<()> = Mutex::new(());
+    // Serialize boot via std::sync::Mutex but drop the guard before any .await.
+    let rx = {
+        let _g = GUARD.lock().expect("full lock");
+        if let Some(b) = FULL_BASE.get() {
+            return b.clone();
+        }
+        let (tx, rx) = tokio::sync::oneshot::channel::<String>();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(async move {
+                let inst = spawn_app_full().await;
+                let base = inst.base.clone();
+                std::mem::forget(inst);
+                let _ = tx.send(base);
+                futures::future::pending::<()>().await;
+            });
+        });
+        rx
+    };
+    let base = rx.await.expect("full app boot");
+    let _ = FULL_BASE.set(base.clone());
+    base
+}
+fn full_client() -> Client {
+    reqwest::Client::builder()
+        .cookie_store(true)
+        .build()
+        .unwrap()
+}
+
+async fn spawn_app_full() -> App {
+    let pg = Postgres::default().start().await.expect("start postgres");
+    let pg_host = pg.get_host().await.expect("pg host");
+    let pg_port = pg.get_host_port_ipv4(5432).await.expect("pg port");
+    let database_url = format!("postgres://postgres:postgres@{pg_host}:{pg_port}/postgres");
+
+    let s3 = MinIO::default().start().await.expect("start minio");
+    let s3_host = s3.get_host().await.expect("s3 host");
+    let s3_port = s3.get_host_port_ipv4(9000).await.expect("s3 port");
+    let s3_endpoint = format!("http://{s3_host}:{s3_port}");
+    let _ = s3
+        .exec(testcontainers::core::ExecCommand::new([
+            "mkdir",
+            "-p",
+            "/data/test-bucket",
+        ]))
+        .await;
+
+    let mut opts = ConnectOptions::new(&database_url);
+    opts.max_connections(5)
+        .connect_timeout(std::time::Duration::from_secs(30));
+    let db = loop {
+        match Database::connect(opts.clone()).await {
+            Ok(c) => break c,
+            Err(_) => tokio::time::sleep(std::time::Duration::from_millis(300)).await,
+        }
+    };
+    Migrator::up(&db, None).await.expect("migrate");
+    let s3_typed = AmazonS3Builder::new()
+        .with_endpoint(&s3_endpoint)
+        .with_access_key_id("minioadmin")
+        .with_secret_access_key("minioadmin")
+        .with_bucket_name("test-bucket")
+        .with_region("us-east-1")
+        .with_allow_http(true)
+        .build()
+        .expect("s3 build");
+    let signer: Arc<object_store::aws::AmazonS3> = Arc::new(s3_typed);
+    let storage: Arc<dyn object_store::ObjectStore> = signer.clone();
+
+    let state = AppState {
+        db,
+        storage,
+        signer,
+        bucket: "test-bucket".to_string(),
+        cookie_key: Key::generate(),
+        bus: events::new_bus(16),
+        mailer: mailer::Mailer::from_env().expect("mailer"),
+        public_base_url: "http://localhost".to_string(),
+    };
+    let app = api::build(
+        state,
+        BuildOpts {
+            production_layers: true,
+            // Generous limits so tests don't trip RPS.
+            rate_limit_rps: 10_000,
+            rate_limit_burst: 10_000,
+        },
+    );
+    let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        // Production layers (governor) need ConnectInfo<SocketAddr>.
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .await
+        .unwrap();
+    });
+    let client = reqwest::Client::builder()
+        .cookie_store(true)
+        .build()
+        .expect("client");
+    App {
+        base: format!("http://{addr}"),
+        client,
+        _pg: pg,
+        _s3: s3,
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn full_csrf_middleware_rejects_missing_header() {
+    let base = full_base().await;
+    let client = full_client();
+    // Signup to obtain cookie + csrf
+    let email = nonce_email("fcsrf");
+    client
+        .post(format!("{}/api/auth/signup", base))
+        .json(&serde_json::json!({ "email": email, "password": "hunter2hunter2" }))
+        .send()
+        .await
+        .unwrap();
+
+    // Mutating request without X-CSRF-Token → 401 from csrf_enforce
+    let r = client
+        .post(format!("{}/api/orgs", base))
+        .json(&serde_json::json!({
+            "name": "x",
+            "slug": format!("s-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)),
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED, "csrf_enforce");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn full_request_id_in_response_and_error_body() {
+    let base = full_base().await;
+    let client = full_client();
+    let r = client
+        .get(format!("{}/api/auth/me", base))
+        .send()
+        .await
+        .unwrap();
+    let st = r.status();
+    let h_id = r
+        .headers()
+        .get("x-request-id")
+        .map(|v| v.to_str().unwrap().to_string());
+    let txt = r.text().await.unwrap_or_default();
+    eprintln!("[full_request_id] status={st} h_id={h_id:?} body={txt}");
+    assert_eq!(st, StatusCode::UNAUTHORIZED, "body={txt}");
+    let h_id = h_id.expect("x-request-id header");
+    let body: serde_json::Value = serde_json::from_str(&txt).expect("json error body");
+    let b_id = body["request_id"].as_str().expect("request_id in body");
+    assert_eq!(h_id, b_id, "header and body request_id must match");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn full_security_headers_present() {
+    let base = full_base().await;
+    let client = full_client();
+    let r = client.get(format!("{}/health", base)).send().await.unwrap();
+    let h = r.headers();
+    assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff");
+    assert_eq!(h.get("x-frame-options").unwrap(), "DENY");
+    assert_eq!(h.get("referrer-policy").unwrap(), "no-referrer");
+    assert!(
+        h.get("strict-transport-security")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("max-age=")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn full_metrics_endpoint_renders_prometheus() {
+    let base = full_base().await;
+    let client = full_client();
+    // Trigger a request so counters are non-zero
+    client.get(format!("{}/health", base)).send().await.unwrap();
+    let r = client
+        .get(format!("{}/metrics", base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let body = r.text().await.unwrap();
+    assert!(
+        body.contains("simu_") || body.contains("# HELP"),
+        "metrics: {body}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn full_read_scope_token_blocks_writes() {
+    let base = full_base().await;
+    let client = full_client();
+    let email = nonce_email("fro");
+    client
+        .post(format!("{}/api/auth/signup", base))
+        .json(&serde_json::json!({ "email": email, "password": "hunter2hunter2" }))
+        .send()
+        .await
+        .unwrap();
+    let csrf = client
+        .get(format!("{}/api/auth/me", base))
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap()["csrf_token"]
+        .as_str()
+        .map(String::from)
+        .unwrap_or_default();
+
+    // Create a read-scope token
+    let r = client
+        .post(format!("{}/api/tokens", base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({ "name": "ro", "scope": "read" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::CREATED);
+    let token = r.json::<serde_json::Value>().await.unwrap()["plaintext"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Bearer GET should work
+    let bare = reqwest::Client::new();
+    let r = bare
+        .get(format!("{}/api/auth/me", base))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+
+    // Bearer POST blocked by token_scope_enforce → 401
+    let r = bare
+        .post(format!("{}/api/orgs", base))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "name": "x", "slug": "ns" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED, "scope enforce");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn full_unknown_route_404_via_fallback() {
+    let base = full_base().await;
+    let client = full_client();
+    let r = client
+        .get(format!("{}/api/no-such-endpoint", base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::NOT_FOUND);
+}
