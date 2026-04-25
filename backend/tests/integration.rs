@@ -1211,6 +1211,10 @@ async fn promote_to_admin(app: &App, email: &str) {
         .expect("user exists");
     let mut am: user::ActiveModel = u.into();
     am.role = Set("admin".into());
+    // Admin actions require MFA enrolled; flip the flag in DB so tests can act
+    // as admin without going through the full TOTP enrollment ceremony.
+    am.totp_enabled = Set(true);
+    am.totp_secret = Set(Some("JBSWY3DPEHPK3PXP".into()));
     use sea_orm::ActiveModelTrait;
     am.update(&db).await.expect("promote");
 }
@@ -3787,4 +3791,172 @@ async fn oauth_callback_state_mismatch_rejected() {
         .unwrap();
     // Without OAUTH_* env set → 400 (config absent).
     assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mailer_send_password_reset_against_mailpit() {
+    use testcontainers::{GenericImage, core::WaitFor};
+
+    // Spin up mailpit (SMTP listener on 1025, HTTP API on 8025).
+    let img = GenericImage::new("axllent/mailpit", "latest")
+        .with_exposed_port(1025u16.into())
+        .with_exposed_port(8025u16.into())
+        .with_wait_for(WaitFor::seconds(2));
+    let mp = img.start().await.expect("start mailpit");
+    let smtp_host = mp.get_host().await.unwrap().to_string();
+    let smtp_port = mp.get_host_port_ipv4(1025).await.unwrap();
+    let http_port = mp.get_host_port_ipv4(8025).await.unwrap();
+
+    unsafe {
+        std::env::set_var("SMTP_HOST", &smtp_host);
+        std::env::set_var("SMTP_PORT", smtp_port.to_string());
+        std::env::set_var("MAIL_FROM", "noreply@simu.local");
+    }
+    let mailer = simu_backend::mailer::Mailer::from_env().expect("mailer");
+
+    let to = "lost-soul@example.com";
+    mailer
+        .send_password_reset(to, "https://example.test/reset?token=abc")
+        .await
+        .expect("send");
+
+    // Mailpit HTTP API: list messages, expect at least one to our recipient.
+    let api = format!("http://{smtp_host}:{http_port}/api/v1/messages");
+    let mut found = false;
+    for _ in 0..30 {
+        let r = reqwest::get(&api).await.unwrap();
+        let v: serde_json::Value = r.json().await.unwrap();
+        let total = v["total"].as_u64().unwrap_or(0);
+        if total >= 1 {
+            // Check the latest message's recipient list
+            let to_field = v["messages"][0]["To"][0]["Address"]
+                .as_str()
+                .unwrap_or_default();
+            if to_field.eq_ignore_ascii_case(to) {
+                found = true;
+                break;
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+    assert!(found, "mailpit never received the password-reset mail");
+    unsafe {
+        std::env::remove_var("SMTP_HOST");
+        std::env::remove_var("SMTP_PORT");
+        std::env::remove_var("MAIL_FROM");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mailer_compose_email_verification_against_mailpit() {
+    use testcontainers::{GenericImage, core::WaitFor};
+    let img = GenericImage::new("axllent/mailpit", "latest")
+        .with_exposed_port(1025u16.into())
+        .with_exposed_port(8025u16.into())
+        .with_wait_for(WaitFor::seconds(2));
+    let mp = img.start().await.expect("start mailpit");
+    let smtp_host = mp.get_host().await.unwrap().to_string();
+    let smtp_port = mp.get_host_port_ipv4(1025).await.unwrap();
+    let http_port = mp.get_host_port_ipv4(8025).await.unwrap();
+    unsafe {
+        std::env::set_var("SMTP_HOST", &smtp_host);
+        std::env::set_var("SMTP_PORT", smtp_port.to_string());
+        std::env::set_var("MAIL_FROM", "noreply@simu.local");
+    }
+    let mailer = simu_backend::mailer::Mailer::from_env().expect("mailer");
+    mailer
+        .send_email_verification("verify@example.com", "https://example.test/v?token=xyz")
+        .await
+        .expect("send");
+    let api = format!("http://{smtp_host}:{http_port}/api/v1/messages");
+    let mut got = false;
+    for _ in 0..30 {
+        let r: serde_json::Value = reqwest::get(&api).await.unwrap().json().await.unwrap();
+        if r["total"].as_u64().unwrap_or(0) >= 1 {
+            got = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+    assert!(got);
+    unsafe {
+        std::env::remove_var("SMTP_HOST");
+        std::env::remove_var("SMTP_PORT");
+        std::env::remove_var("MAIL_FROM");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ws_receives_file_created_broadcast() {
+    use futures::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message;
+    let base = full_base().await;
+    let client = full_client();
+    let email = nonce_email("ws");
+    let signup_resp = client
+        .post(format!("{}/api/auth/signup", base))
+        .json(&serde_json::json!({ "email": email, "password": "hunter2hunter2" }))
+        .send()
+        .await
+        .unwrap();
+    // Capture Set-Cookie before consuming the body.
+    let cookie = signup_resp
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .map(|s| s.split(';').next().unwrap_or("").to_string())
+        .collect::<Vec<_>>()
+        .join("; ");
+    let csrf = signup_resp.json::<serde_json::Value>().await.unwrap()["csrf_token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Connect WS with cookies via Authorization-style header. tungstenite needs
+    // raw http::Request for headers.
+    let ws_url = base.replace("http://", "ws://") + "/events/ws";
+    use http::Request;
+    let req = Request::builder()
+        .uri(&ws_url)
+        .header("host", "127.0.0.1")
+        .header("connection", "upgrade")
+        .header("upgrade", "websocket")
+        .header("sec-websocket-version", "13")
+        .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
+        .header("cookie", &cookie)
+        .body(())
+        .unwrap();
+    let (mut ws, _resp) = tokio_tungstenite::connect_async(req).await.expect("ws");
+
+    // Trigger an event: upload a file via JSON
+    use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
+    client
+        .post(format!("{}/api/files/json", base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({
+            "filename": "ws.txt",
+            "content_type": "text/plain",
+            "data_base64": B64.encode("ws"),
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // Read until we see FileCreated or timeout
+    let mut got_created = false;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while std::time::Instant::now() < deadline {
+        match tokio::time::timeout(std::time::Duration::from_secs(2), ws.next()).await {
+            Ok(Some(Ok(Message::Text(t)))) => {
+                if t.contains("file_created") || t.contains("FileCreated") {
+                    got_created = true;
+                    break;
+                }
+            }
+            Ok(Some(Ok(_))) | Ok(Some(Err(_))) | Ok(None) | Err(_) => continue,
+        }
+    }
+    let _ = ws.send(Message::Close(None)).await;
+    assert!(got_created, "WS never delivered file_created event");
 }
