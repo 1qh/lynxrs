@@ -10,7 +10,8 @@ services:
     ports:
       - "5533:5432"
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      # PG18+ wants the mount one level up so pg_upgrade can use --link.
+      - pg_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-simu} -d ${POSTGRES_DB:-simu}"]
       interval: 5s
