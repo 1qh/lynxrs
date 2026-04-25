@@ -1,0 +1,101 @@
+# Prometheus alert rules for simu. Mount this into a Prometheus instance via
+# `rule_files: ["/etc/prometheus/simu-alerts.yml"]`. Each alert pages on
+# severity=page; warning fires Slack/email but doesn't page.
+
+groups:
+  - name: simu.backend
+    interval: 30s
+    rules:
+      - alert: BackendDown
+        expr: up{job="simu-backend"} == 0
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: simu-backend instance unreachable
+          description: |
+            {{ $labels.instance }} has been unreachable for 2+ minutes.
+            Check pod status, recent deploys, and downstream (postgres, minio).
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(simu_http_requests_total{status=~"5.."}[5m]))
+            / sum(rate(simu_http_requests_total[5m])) > 0.02
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: ">2% 5xx error rate"
+          description: |
+            Backend is returning 5xx for >2% of requests over the last 5min.
+            Check `tracing-subscriber` JSON log and recent deploys.
+
+      - alert: HighLatencyP99
+        expr: |
+          histogram_quantile(0.99, sum(rate(simu_http_requests_duration_seconds_bucket[5m])) by (le)) > 1.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: p99 request latency > 1.5s
+          description: Investigate slow handlers via OTLP traces.
+
+      - alert: AuditChainBroken
+        # /admin/audit/verify is gauged externally by a probe; if probe reports
+        # ok=0, the chain is tampered.
+        expr: simu_audit_chain_ok == 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: Audit log hash chain reports broken_at
+          description: |
+            Tamper detected. Pull S3 archive, replay genesis→broken,
+            identify the actor in audit_events.
+
+      - alert: DBPoolExhausted
+        expr: |
+          sum(simu_db_pool_in_use) / sum(simu_db_pool_max) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: DB pool >90% utilized
+          description: Long-running queries or pool too small.
+
+      - alert: WebhookDeliveryBacklog
+        expr: |
+          sum(simu_webhook_pending_deliveries) > 1000
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: webhook dispatcher falling behind
+          description: |
+            Pending deliveries growing. Check destination endpoints and
+            dispatcher concurrency.
+
+  - name: simu.storage
+    interval: 30s
+    rules:
+      - alert: S3PutErrorRate
+        expr: |
+          rate(simu_s3_put_errors_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: S3 PUT failing >5%/s
+          description: |
+            Object storage degraded. Check minio/S3 health, credentials,
+            bucket policy, network.
+
+      - alert: QuotaPressure
+        expr: |
+          (sum by (user) (simu_user_used_bytes) / sum by (user) (simu_user_quota_bytes)) > 0.9
+        for: 30m
+        labels:
+          severity: info
+        annotations:
+          summary: User {{ $labels.user }} >90% quota
+          description: Notify via in-app banner; offer upgrade.

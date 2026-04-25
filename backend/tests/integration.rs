@@ -3960,3 +3960,69 @@ async fn ws_receives_file_created_broadcast() {
     let _ = ws.send(Message::Close(None)).await;
     assert!(got_created, "WS never delivered file_created event");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn audit_chain_holds_under_concurrent_writes() {
+    use simu_backend::audit;
+    let app = spawn_app().await;
+    // Fire 30 concurrent record calls. The advisory_xact_lock must serialize so
+    // no two rows share prev_hash and the chain remains valid.
+    let mut handles = Vec::new();
+    for i in 0..30 {
+        let db = app._pg.get_host().await.unwrap();
+        let _ = db;
+        let bus_db = state_db_clone(&app).await;
+        handles.push(tokio::spawn(async move {
+            audit::record(
+                &bus_db,
+                None,
+                &format!("concurrent_{i}"),
+                None,
+                serde_json::json!({"i": i}),
+            )
+            .await;
+        }));
+    }
+    for h in handles {
+        h.await.unwrap();
+    }
+
+    // Promote a fresh user to admin, then verify chain via API.
+    let email = nonce_email("auc");
+    signup_with_csrf(&app, &email).await;
+    promote_to_admin(&app, &email).await;
+    let csrf = app
+        .client
+        .get(format!("{}/api/auth/me", app.base))
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap()["csrf_token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let r = app
+        .client
+        .get(format!("{}/api/admin/audit/verify", app.base))
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert!(
+        body["ok"].as_bool().unwrap_or(false),
+        "chain corrupted: {body}"
+    );
+    assert!(body["total"].as_u64().unwrap() >= 30);
+}
+
+// Helper: fresh DatabaseConnection from the test container (cheap when reused).
+async fn state_db_clone(app: &App) -> sea_orm::DatabaseConnection {
+    use sea_orm::{ConnectOptions, Database};
+    let pg_host = app._pg.get_host().await.unwrap();
+    let pg_port = app._pg.get_host_port_ipv4(5432).await.unwrap();
+    let url = format!("postgres://postgres:postgres@{pg_host}:{pg_port}/postgres");
+    Database::connect(ConnectOptions::new(url)).await.unwrap()
+}
