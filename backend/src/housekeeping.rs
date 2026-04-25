@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::entity::{
-    audit_event, email_verification, file_object, password_reset, webhook_delivery,
+    audit_event, email_verification, file_object, password_reset, user, webhook_delivery,
 };
 
 /// Spawn a task that periodically deletes expired/used tokens.
@@ -153,12 +153,26 @@ pub async fn run_once(
         }
     }
 
+    // Soft-deleted users: after USER_PURGE_GRACE_DAYS (default 7), permanently
+    // drop the row. CASCADE FKs sweep file_objects, password_resets, etc.
+    let grace_days: i64 = std::env::var("USER_PURGE_GRACE_DAYS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(7);
+    let user_cutoff = now - chrono::Duration::days(grace_days);
+    let users_purged = user::Entity::delete_many()
+        .filter(user::Column::DeletedAt.lt(user_cutoff))
+        .exec(db)
+        .await?
+        .rows_affected;
+
     if pr_deleted > 0
         || ev_deleted > 0
         || purged > 0
         || audit_deleted > 0
         || whd_deleted > 0
         || orphans_deleted > 0
+        || users_purged > 0
     {
         tracing::info!(
             pr_deleted,
@@ -167,6 +181,7 @@ pub async fn run_once(
             audit_deleted,
             whd_deleted,
             orphans_deleted,
+            users_purged,
             "housekeeping sweep done"
         );
     }

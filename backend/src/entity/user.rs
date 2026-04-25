@@ -26,6 +26,7 @@ pub struct Model {
     pub locked_until: Option<ChronoDateTimeUtc>,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
+    pub deleted_at: Option<ChronoDateTimeUtc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

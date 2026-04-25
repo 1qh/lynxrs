@@ -172,6 +172,7 @@ pub async fn callback(
             locked_until: Set(None),
             display_name: Set(None),
             avatar_url: Set(None),
+            deleted_at: Set(None),
         }
         .insert(&app.db)
         .await?

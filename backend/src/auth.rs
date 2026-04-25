@@ -175,6 +175,7 @@ pub async fn signup(
     let email = input.email.trim().to_lowercase();
     let existing = user::Entity::find()
         .filter(user::Column::Email.eq(&email))
+        .filter(user::Column::DeletedAt.is_null())
         .one(&state.db)
         .await?;
     if existing.is_some() {
@@ -199,6 +200,7 @@ pub async fn signup(
         locked_until: Set(None),
         display_name: Set(None),
         avatar_url: Set(None),
+        deleted_at: Set(None),
     }
     .insert(&state.db)
     .await?;
@@ -345,6 +347,7 @@ pub async fn login(
     let email = input.email.trim().to_lowercase();
     let u = match user::Entity::find()
         .filter(user::Column::Email.eq(&email))
+        .filter(user::Column::DeletedAt.is_null())
         .one(&state.db)
         .await?
     {
@@ -544,7 +547,6 @@ pub async fn delete_me(
     jar: PrivateCookieJar,
 ) -> Result<impl IntoResponse> {
     let uid = authenticate(&state, &headers, &jar).await?;
-    // CASCADE FKs drop file_objects, password_resets, email_verifications.
     crate::audit::record(
         &state.db,
         Some(uid),
@@ -553,7 +555,19 @@ pub async fn delete_me(
         serde_json::json!({}),
     )
     .await;
-    user::Entity::delete_by_id(uid).exec(&state.db).await?;
+    // Soft-delete: set deleted_at so login is rejected immediately, but keep
+    // the row + related data for the configured grace window. Housekeeping
+    // hard-deletes after USER_PURGE_GRACE_DAYS (default 7).
+    let now = chrono::Utc::now();
+    let u = user::Entity::find_by_id(uid)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+    let mut am: user::ActiveModel = u.into();
+    am.deleted_at = Set(Some(now));
+    // Bump session_version so any other live cookies invalidate.
+    am.session_version = Set(am.session_version.unwrap() + 1);
+    am.update(&state.db).await?;
     let jar = jar.remove(Cookie::build(SESSION_COOKIE).path("/").build());
     Ok((StatusCode::NO_CONTENT, jar))
 }
@@ -651,6 +665,9 @@ pub async fn current_user_id(state: &AppState, jar: &PrivateCookieJar) -> Result
         .await?
         .ok_or(AppError::Unauthorized)?;
     if u.session_version != v {
+        return Err(AppError::Unauthorized);
+    }
+    if u.deleted_at.is_some() {
         return Err(AppError::Unauthorized);
     }
     Ok(uid)
@@ -985,6 +1002,7 @@ pub async fn forgot_password(
     // Always return 202 to avoid email enumeration.
     if let Some(u) = user::Entity::find()
         .filter(user::Column::Email.eq(&email))
+        .filter(user::Column::DeletedAt.is_null())
         .one(&state.db)
         .await?
     {
