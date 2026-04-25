@@ -147,9 +147,26 @@ jobs:
       - name: playwright install
         working-directory: frontend
         run: bunx playwright install --with-deps chromium
+      - name: openapi codegen
+        working-directory: frontend
+        run: bun run openapi:codegen
+      - name: launch frontend dev server
+        working-directory: frontend
+        run: |
+          bun run dev > /tmp/frontend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:3000 >/dev/null 2>&1; then
+              echo "frontend ready after ${i}s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "frontend never became ready — log:"
+          cat /tmp/frontend.log
+          exit 1
       - name: playwright test
         working-directory: frontend
-        run: bun run openapi:codegen && bunx playwright test
+        run: bunx playwright test
       - name: upload traces on failure
         if: failure()
         uses: actions/upload-artifact@v4
