@@ -818,3 +818,227 @@ async fn upload_json_create_list_delete_file() {
             .any(|f| f["id"] == file_id)
     );
 }
+
+// Helper: signup + upload a file via JSON, return (csrf, file_id) or None if storage isn't set up.
+async fn signup_and_upload(app: &App, prefix: &str) -> Option<(String, String)> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
+    let email = nonce_email(prefix);
+    let csrf = signup_with_csrf(app, &email).await;
+    let r = app
+        .client
+        .post(format!("{}/api/files/json", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({
+            "filename": "fixture.txt",
+            "content_type": "text/plain",
+            "data_base64": B64.encode("fixture content"),
+        }))
+        .send()
+        .await
+        .unwrap();
+    if !r.status().is_success() {
+        eprintln!("signup_and_upload SKIP ({}): storage unavailable", prefix);
+        return None;
+    }
+    let body: serde_json::Value = r.json().await.unwrap();
+    Some((csrf, body["id"].as_str().unwrap().to_string()))
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_comment_lifecycle() {
+    let app = spawn_app().await;
+    let Some((csrf, file_id)) = signup_and_upload(&app, "cmt").await else {
+        return;
+    };
+
+    // Add comment
+    let r = app
+        .client
+        .post(format!("{}/api/files/{}/comments", app.base, file_id))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({ "body": "first" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::CREATED, "add_comment");
+    let cmt: serde_json::Value = r.json().await.unwrap();
+    let cid = cmt["id"].as_str().unwrap().to_string();
+
+    // List
+    let r = app
+        .client
+        .get(format!("{}/api/files/{}/comments", app.base, file_id))
+        .send()
+        .await
+        .unwrap();
+    let list: serde_json::Value = r.json().await.unwrap();
+    assert!(list.as_array().unwrap().iter().any(|c| c["id"] == cid));
+
+    // Delete
+    let r = app
+        .client
+        .delete(format!(
+            "{}/api/files/{}/comments/{}",
+            app.base, file_id, cid
+        ))
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_star_lifecycle() {
+    let app = spawn_app().await;
+    let Some((csrf, file_id)) = signup_and_upload(&app, "star").await else {
+        return;
+    };
+
+    // Star
+    let r = app
+        .client
+        .post(format!("{}/api/files/{}/star", app.base, file_id))
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::NO_CONTENT);
+
+    // List starred
+    let r = app
+        .client
+        .get(format!("{}/api/files/starred", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let list: serde_json::Value = r.json().await.unwrap();
+    assert!(
+        list.as_array().unwrap().iter().any(|f| f["id"] == file_id),
+        "starred list missing file"
+    );
+
+    // Unstar
+    let r = app
+        .client
+        .delete(format!("{}/api/files/{}/star", app.base, file_id))
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_share_create_and_revoke() {
+    let app = spawn_app().await;
+    let Some((csrf, file_id)) = signup_and_upload(&app, "shr").await else {
+        return;
+    };
+
+    let r = app
+        .client
+        .post(format!("{}/api/files/{}/shares", app.base, file_id))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({ "ttl_hours": 1 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::CREATED, "create_share");
+    let share: serde_json::Value = r.json().await.unwrap();
+    let sid = share["id"].as_str().unwrap().to_string();
+    let url = share["url"].as_str().unwrap().to_string();
+    assert!(url.contains("/api/shares/"), "url: {url}");
+
+    // List shares
+    let r = app
+        .client
+        .get(format!("{}/api/files/{}/shares", app.base, file_id))
+        .send()
+        .await
+        .unwrap();
+    let list: serde_json::Value = r.json().await.unwrap();
+    assert!(list.as_array().unwrap().iter().any(|s| s["id"] == sid));
+
+    // Revoke
+    let r = app
+        .client
+        .delete(format!("{}/api/files/shares/{}", app.base, sid))
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_tag_add_remove() {
+    let app = spawn_app().await;
+    let Some((csrf, file_id)) = signup_and_upload(&app, "tag").await else {
+        return;
+    };
+
+    let r = app
+        .client
+        .post(format!("{}/api/files/{}/tags", app.base, file_id))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({ "tag": "important" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK, "add_tag");
+    let body: serde_json::Value = r.json().await.unwrap();
+    let tags = body["tags"].as_array().unwrap();
+    assert!(tags.iter().any(|t| t == "important"));
+
+    // Remove
+    let r = app
+        .client
+        .delete(format!("{}/api/files/{}/tags/important", app.base, file_id))
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert!(body["tags"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_versions_list_starts_empty() {
+    let app = spawn_app().await;
+    let Some((_csrf, file_id)) = signup_and_upload(&app, "ver").await else {
+        return;
+    };
+
+    let r = app
+        .client
+        .get(format!("{}/api/files/{}/versions", app.base, file_id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let list: serde_json::Value = r.json().await.unwrap();
+    // No prior versions before any update.
+    assert_eq!(list.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_rename_persists() {
+    let app = spawn_app().await;
+    let Some((csrf, file_id)) = signup_and_upload(&app, "ren").await else {
+        return;
+    };
+    let r = app
+        .client
+        .patch(format!("{}/api/files/{}", app.base, file_id))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({ "filename": "renamed.txt" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(body["filename"].as_str().unwrap(), "renamed.txt");
+}
