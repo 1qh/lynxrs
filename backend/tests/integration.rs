@@ -4225,3 +4225,50 @@ async fn me_import_creates_files() {
     let list: serde_json::Value = r.json().await.unwrap();
     assert_eq!(list["items"].as_array().unwrap().len(), 3);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn oauth_github_provider_start_redirects() {
+    unsafe {
+        std::env::set_var("OAUTH_GITHUB_CLIENT_ID", "gh-cid");
+        std::env::set_var("OAUTH_GITHUB_CLIENT_SECRET", "gh-cs");
+        std::env::set_var("OAUTH_GITHUB_REDIRECT_URL", "http://localhost/cb");
+    }
+    let app = spawn_app().await;
+    let r = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .cookie_store(true)
+        .build()
+        .unwrap()
+        .get(format!("{}/api/auth/oauth/github/start", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        r.status().is_redirection(),
+        "expected redirect, got {}",
+        r.status()
+    );
+    let loc = r.headers().get("location").unwrap().to_str().unwrap();
+    assert!(
+        loc.contains("github.com/login/oauth/authorize"),
+        "loc: {loc}"
+    );
+    assert!(loc.contains("client_id=gh-cid"));
+    unsafe {
+        std::env::remove_var("OAUTH_GITHUB_CLIENT_ID");
+        std::env::remove_var("OAUTH_GITHUB_CLIENT_SECRET");
+        std::env::remove_var("OAUTH_GITHUB_REDIRECT_URL");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn oauth_unknown_provider_400() {
+    let app = spawn_app().await;
+    let r = app
+        .client
+        .get(format!("{}/api/auth/oauth/discord/start", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+}

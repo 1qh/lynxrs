@@ -37,19 +37,44 @@ struct Config {
     scope: String,
 }
 
-fn load_config() -> Option<Config> {
+/// Per-provider env-prefixed config loader.
+/// Looks up `OAUTH_{PROVIDER}_*` first, then falls back to bare `OAUTH_*`
+/// (back-compat for the original Google-only deployment).
+fn load_config_for(provider: &str) -> Option<Config> {
+    let p = provider.to_uppercase();
+    let pick = |key: &str| -> Option<String> {
+        std::env::var(format!("OAUTH_{p}_{key}"))
+            .or_else(|_| std::env::var(format!("OAUTH_{key}")))
+            .ok()
+    };
+    let (default_authorize, default_token, default_userinfo, default_scope) = match provider {
+        "github" => (
+            "https://github.com/login/oauth/authorize",
+            "https://github.com/login/oauth/access_token",
+            "https://api.github.com/user",
+            "read:user user:email",
+        ),
+        // default = google
+        _ => (
+            "https://accounts.google.com/o/oauth2/v2/auth",
+            "https://oauth2.googleapis.com/token",
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            "openid email profile",
+        ),
+    };
     Some(Config {
-        client_id: std::env::var("OAUTH_CLIENT_ID").ok()?,
-        client_secret: std::env::var("OAUTH_CLIENT_SECRET").ok()?,
-        redirect: std::env::var("OAUTH_REDIRECT_URL").ok()?,
-        authorize: std::env::var("OAUTH_AUTHORIZE_URL")
-            .unwrap_or_else(|_| "https://accounts.google.com/o/oauth2/v2/auth".into()),
-        token: std::env::var("OAUTH_TOKEN_URL")
-            .unwrap_or_else(|_| "https://oauth2.googleapis.com/token".into()),
-        userinfo: std::env::var("OAUTH_USERINFO_URL")
-            .unwrap_or_else(|_| "https://www.googleapis.com/oauth2/v2/userinfo".into()),
-        scope: std::env::var("OAUTH_SCOPE").unwrap_or_else(|_| "openid email profile".into()),
+        client_id: pick("CLIENT_ID")?,
+        client_secret: pick("CLIENT_SECRET")?,
+        redirect: pick("REDIRECT_URL")?,
+        authorize: pick("AUTHORIZE_URL").unwrap_or_else(|| default_authorize.into()),
+        token: pick("TOKEN_URL").unwrap_or_else(|| default_token.into()),
+        userinfo: pick("USERINFO_URL").unwrap_or_else(|| default_userinfo.into()),
+        scope: pick("SCOPE").unwrap_or_else(|| default_scope.into()),
     })
+}
+
+fn load_config() -> Option<Config> {
+    load_config_for("google")
 }
 
 fn random_state() -> String {
@@ -60,8 +85,31 @@ fn random_state() -> String {
 
 const OAUTH_STATE_COOKIE: &str = "simu_oauth_state";
 
+pub async fn start_provider(
+    axum::extract::Path(provider): axum::extract::Path<String>,
+    jar: PrivateCookieJar,
+) -> Result<(PrivateCookieJar, Redirect)> {
+    if !matches!(provider.as_str(), "google" | "github") {
+        return Err(AppError::BadRequest(format!(
+            "unknown provider: {provider}"
+        )));
+    }
+    let cfg = load_config_for(&provider)
+        .ok_or_else(|| AppError::BadRequest(format!("{provider}: OAuth not configured")))?;
+    start_with(cfg, &provider, jar).await
+}
+
 pub async fn start(jar: PrivateCookieJar) -> Result<(PrivateCookieJar, Redirect)> {
     let cfg = load_config().ok_or_else(|| AppError::BadRequest("OAuth not configured".into()))?;
+    start_with(cfg, "google", jar).await
+}
+
+async fn start_with(
+    cfg: Config,
+    provider: &str,
+    jar: PrivateCookieJar,
+) -> Result<(PrivateCookieJar, Redirect)> {
+    let _ = provider;
     let state = random_state();
     let mut parsed = reqwest::Url::parse(&cfg.authorize)
         .map_err(|e| AppError::Other(anyhow::anyhow!("authorize url: {e}")))?;
@@ -201,8 +249,11 @@ pub async fn callback(
 pub fn router() -> axum::Router<AppState> {
     use axum::routing::get;
     axum::Router::new()
+        // Backward-compat fixed-google routes
         .route("/auth/oauth/google/start", get(start))
         .route("/auth/oauth/google/callback", get(callback))
+        // Generic per-provider routes
+        .route("/auth/oauth/{provider}/start", get(start_provider))
         .route("/auth/oauth/status", get(config_status))
 }
 
