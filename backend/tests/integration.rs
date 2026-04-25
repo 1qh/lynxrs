@@ -39,16 +39,22 @@ async fn spawn_app() -> App {
     let s3_port = s3.get_host_port_ipv4(9000).await.expect("s3 port");
     let s3_endpoint = format!("http://{s3_host}:{s3_port}");
 
-    // Pre-create the test bucket by seeding the filesystem layout MinIO scans on startup
-    // is too late post-start. Use mkdir via container exec — MinIO treats top-level dirs
-    // under /data as buckets. This is what testcontainers-modules/minio does internally.
-    let _ = s3
-        .exec(testcontainers::core::ExecCommand::new([
-            "mkdir",
-            "-p",
-            "/data/test-bucket",
-        ]))
-        .await;
+    // Pre-create the test bucket. MinIO scans /data on start; once running, dirs
+    // under /data act as buckets. Sleep then mkdir handles GHA-runner timing.
+    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    for _ in 0..30 {
+        let r = s3
+            .exec(testcontainers::core::ExecCommand::new([
+                "mkdir",
+                "-p",
+                "/data/test-bucket",
+            ]))
+            .await;
+        if r.is_ok() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
 
     let mut opts = ConnectOptions::new(&database_url);
     opts.max_connections(5)
