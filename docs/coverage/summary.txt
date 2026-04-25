@@ -1,13 +1,24 @@
-Coverage from `cargo llvm-cov --release --tests --summary-only`.
-75 tests passing + 5 ignored.
+Coverage from `cargo llvm-cov --release --tests --summary-only -- --test-threads=2`.
+80 tests passing + 5 ignored.
 
-Progression this session:
-  baseline:                     13.08% regions / 14.23% lines
-  +full middleware (csrf,
-   request-id, scope, governor,
-   prometheus, security headers): 65.96% / 71.88%   ← latest
+Progression this session (13.08% baseline):
+  +org+token:                   19.14% / 20.59%
+  +wh+mfa:                      22.20% / 24.42%
+  +bucket-mkdir:                30.68% / 34.14%
+  +bulk+presign+meta:           35.51% / 39.26%
+  +admin+versions:              41.12% / 45.30%
+  +mfa-totp+admin:              44.49% / 49.46%
+  +webhook deliveries:          46.16% / 51.33%
+  +cli+auth+hk:                 50.43% / 56.84%
+  +files/mod core:              54.48% / 60.64%
+  +zip+move+invite+mfa-rec:     59.66% / 66.17%
+  +csrf+req-id+lifecycle:       60.16% / 66.69%
+  +full middleware stack:       65.96% / 71.88%
+  +oauth+lockout+rotation:      66.53% / 72.53%   ← latest
 
-Major modules (>50% line cov):
+  Δ from baseline: +53.45 region / +58.30 lines
+
+Major modules (line cov):
   bin/simu-admin       88%
   files/meta           88%
   files/versions       86%
@@ -15,8 +26,8 @@ Major modules (>50% line cov):
   tokens               85%
   files/comments       81%
   files/tags           84%
-  auth                 74%
-  api                  72%   (+38 from full middleware tests)
+  auth                 ~74%
+  api                  72%
   orgs                 77%
   files/mod            76%
   files/trash          67%
@@ -24,13 +35,18 @@ Major modules (>50% line cov):
   admin                66%
   housekeeping         61%
   mfa                  70%
+  webhooks             60%
   files/shares         55%
   files/presign        53%
   files/bulk           52%
-  webhooks             51%
 
-Still 0% / very low: telemetry, oauth (5%, OIDC needed), files/thumb (5%; flaky).
+Still 0% / very low: telemetry (only main()), files/thumb (5%; flaky).
+oauth at ~ low % (callback decoding needs OIDC mock); covered by Playwright e2e.
 
-Production-layer tests run via shared OnceLock+Mutex spawn (Prometheus is process-
-global). axum::serve uses into_make_service_with_connect_info::<SocketAddr>() so
-tower_governor can extract peer IP.
+Run notes:
+- Use `--test-threads=2` to avoid colima resource exhaustion (each test spins
+  postgres + minio testcontainers).
+- Production-layer tests (full_*) share one app via OnceLock+Mutex+spawn_blocking
+  because Prometheus is process-global.
+- axum::serve uses `into_make_service_with_connect_info::<SocketAddr>()` so
+  tower_governor extracts peer IP.
