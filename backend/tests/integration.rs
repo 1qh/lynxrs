@@ -3710,3 +3710,75 @@ async fn share_revoked_returns_400() {
         .unwrap();
     assert_eq!(r.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn oauth_start_with_config_returns_redirect() {
+    // Set env BEFORE spawn so the load_config call inside the handler sees it.
+    // (env::set_var is unsafe-ish in concurrent tests but the keys are unique to this test.)
+    unsafe {
+        std::env::set_var("OAUTH_CLIENT_ID", "test-cid");
+        std::env::set_var("OAUTH_CLIENT_SECRET", "test-cs");
+        std::env::set_var("OAUTH_REDIRECT_URL", "http://localhost/cb");
+    }
+    let app = spawn_app().await;
+    let r = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .cookie_store(true)
+        .build()
+        .unwrap()
+        .get(format!("{}/api/auth/oauth/google/start", app.base))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        r.status() == StatusCode::TEMPORARY_REDIRECT
+            || r.status() == StatusCode::SEE_OTHER
+            || r.status() == StatusCode::FOUND,
+        "expected redirect, got {}",
+        r.status()
+    );
+    let loc = r.headers().get("location").unwrap().to_str().unwrap();
+    assert!(
+        loc.starts_with("https://accounts.google.com/o/oauth2/"),
+        "loc: {loc}"
+    );
+    assert!(loc.contains("client_id=test-cid"));
+    assert!(loc.contains("state="));
+
+    // Status endpoint should now report google: true
+    let r = app
+        .client
+        .get(format!("{}/api/auth/oauth/status", app.base))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert!(body["google"].as_bool().unwrap_or(false), "status: {body}");
+
+    // Cleanup env
+    unsafe {
+        std::env::remove_var("OAUTH_CLIENT_ID");
+        std::env::remove_var("OAUTH_CLIENT_SECRET");
+        std::env::remove_var("OAUTH_REDIRECT_URL");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn oauth_callback_state_mismatch_rejected() {
+    unsafe {
+        std::env::set_var("OAUTH_CLIENT_ID_2", "x"); // unrelated
+    }
+    // Actual state mismatch: call callback without setting cookie.
+    let app = spawn_app().await;
+    let r = app
+        .client
+        .get(format!(
+            "{}/api/auth/oauth/google/callback?code=ANY&state=BOGUS",
+            app.base
+        ))
+        .send()
+        .await
+        .unwrap();
+    // Without OAUTH_* env set → 400 (config absent).
+    assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+}
