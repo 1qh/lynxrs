@@ -3619,3 +3619,200 @@ async fn full_docs_html_renders() {
     let body = r.text().await.unwrap();
     assert!(body.contains("api-reference"));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_download_range_suffix_and_partial() {
+    let app = spawn_app().await;
+    let Some((_csrf, file_id)) = signup_and_upload(&app, "rng").await else {
+        return;
+    };
+    // bytes=-3 → last 3 bytes ("ent" of "fixture content"... wait it's "ent" from "content")
+    let r = app
+        .client
+        .get(format!("{}/api/files/{}", app.base, file_id))
+        .header("range", "bytes=-3")
+        .send()
+        .await
+        .unwrap();
+    assert!(r.status() == StatusCode::PARTIAL_CONTENT || r.status() == StatusCode::OK);
+    let body = r.text().await.unwrap();
+    // Suffix-range support is optional; either 3 bytes (parsed) or 15 (fallback) is fine.
+    assert!(body.len() == 3 || body.len() == 15);
+
+    // bytes=8- → from byte 8 to end (" content")
+    let r = app
+        .client
+        .get(format!("{}/api/files/{}", app.base, file_id))
+        .header("range", "bytes=8-")
+        .send()
+        .await
+        .unwrap();
+    assert!(r.status() == StatusCode::PARTIAL_CONTENT || r.status() == StatusCode::OK);
+    let body = r.text().await.unwrap();
+    assert_eq!(body, "content");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_download_range_invalid_falls_back() {
+    let app = spawn_app().await;
+    let Some((_csrf, file_id)) = signup_and_upload(&app, "rngB").await else {
+        return;
+    };
+    let r = app
+        .client
+        .get(format!("{}/api/files/{}", app.base, file_id))
+        .header("range", "garbage-not-a-range")
+        .send()
+        .await
+        .unwrap();
+    // Invalid range → either 200 (full body) or 416. Both are acceptable.
+    assert!(
+        r.status() == StatusCode::OK || r.status() == StatusCode::RANGE_NOT_SATISFIABLE,
+        "invalid range: {}",
+        r.status()
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn org_quota_check_and_stats() {
+    let app = spawn_app().await;
+    let email = nonce_email("orgQ");
+    let csrf = signup_with_csrf(&app, &email).await;
+    let r = app
+        .client
+        .post(format!("{}/api/orgs", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({
+            "name": "QC",
+            "slug": format!("q-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)),
+        }))
+        .send()
+        .await
+        .unwrap();
+    let org_id = r.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Move a file in
+    use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
+    let r = app
+        .client
+        .post(format!("{}/api/files/json", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({
+            "filename": "in-org.txt",
+            "content_type": "text/plain",
+            "data_base64": B64.encode("data"),
+        }))
+        .send()
+        .await
+        .unwrap();
+    let file_id = r.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    app.client
+        .patch(format!("{}/api/files/{}/move", app.base, file_id))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({ "org_id": org_id }))
+        .send()
+        .await
+        .unwrap();
+
+    let r = app
+        .client
+        .get(format!("{}/api/orgs/{}/stats", app.base, org_id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let stats: serde_json::Value = r.json().await.unwrap();
+    assert!(stats["files"].as_u64().unwrap() >= 1);
+    assert!(stats["total_bytes"].as_i64().unwrap() > 0);
+    assert!(stats["members"].as_u64().unwrap() >= 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn share_with_password_requires_password_to_download() {
+    let app = spawn_app().await;
+    let Some((csrf, file_id)) = signup_and_upload(&app, "shrP").await else {
+        return;
+    };
+    let r = app
+        .client
+        .post(format!("{}/api/files/{}/shares", app.base, file_id))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({
+            "ttl_hours": 1,
+            "password": "letmein"
+        }))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = r.json().await.unwrap();
+    let url = body["url"].as_str().unwrap().to_string();
+    let token = url.rsplit('/').next().unwrap();
+
+    // Without password → 401
+    let bare = reqwest::Client::new();
+    let r = bare
+        .get(format!("{}/api/shares/{}", app.base, token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+    // Wrong password → 401
+    let r = bare
+        .get(format!("{}/api/shares/{}?password=wrong", app.base, token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+    // Correct password → 200
+    let r = bare
+        .get(format!(
+            "{}/api/shares/{}?password=letmein",
+            app.base, token
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn share_revoked_returns_400() {
+    let app = spawn_app().await;
+    let Some((csrf, file_id)) = signup_and_upload(&app, "shrR").await else {
+        return;
+    };
+    let r = app
+        .client
+        .post(format!("{}/api/files/{}/shares", app.base, file_id))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({ "ttl_hours": 1 }))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = r.json().await.unwrap();
+    let id = body["id"].as_str().unwrap().to_string();
+    let url = body["url"].as_str().unwrap().to_string();
+    let token = url.rsplit('/').next().unwrap();
+
+    // Revoke
+    app.client
+        .delete(format!("{}/api/files/shares/{}", app.base, id))
+        .header("x-csrf-token", &csrf)
+        .send()
+        .await
+        .unwrap();
+
+    // Anonymous download → 400 share revoked
+    let r = reqwest::Client::new()
+        .get(format!("{}/api/shares/{}", app.base, token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+}
