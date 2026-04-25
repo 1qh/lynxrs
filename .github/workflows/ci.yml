@@ -155,7 +155,10 @@ jobs:
         run: |
           bun run dev > /tmp/frontend.log 2>&1 &
           for i in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:3000 >/dev/null 2>&1; then
+            # rspeedy may return 404 on / but 200 on /main.web.bundle.
+            # -f only fails on 4xx/5xx, so check a known-good path.
+            if curl -sf "http://127.0.0.1:3000/main.web.bundle" >/dev/null 2>&1 \
+               || curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:3000/" 2>/dev/null | grep -qE '^(200|404)$'; then
               echo "frontend ready after ${i}s"
               exit 0
             fi
