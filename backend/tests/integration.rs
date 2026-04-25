@@ -4130,3 +4130,56 @@ async fn oauth_callback_with_mock_oidc_creates_account() {
         std::env::remove_var("OAUTH_AUTHORIZE_URL");
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nats_bridge_relays_events_between_buses() {
+    use simu_backend::events::{EventMsg, new_bus, spawn_nats_bridge};
+    use testcontainers::{GenericImage, core::WaitFor, runners::AsyncRunner};
+
+    // Spin a NATS server testcontainer.
+    let img = GenericImage::new("nats", "alpine")
+        .with_exposed_port(4222u16.into())
+        .with_wait_for(WaitFor::seconds(1));
+    let nats = img.start().await.expect("start nats");
+    let host = nats.get_host().await.unwrap().to_string();
+    let port = nats.get_host_port_ipv4(4222).await.unwrap();
+    let url = format!("nats://{host}:{port}");
+
+    // Two buses representing two backend instances on the same NATS subject.
+    unsafe {
+        std::env::set_var("NATS_URL", &url);
+        std::env::set_var("NATS_SUBJECT", "simu.test.events");
+    }
+    let bus_a = new_bus(32);
+    let bus_b = new_bus(32);
+    spawn_nats_bridge(bus_a.clone());
+    spawn_nats_bridge(bus_b.clone());
+
+    // Wait for subscriptions to land.
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let mut rx_b = bus_b.subscribe();
+
+    // Publish on A → expect to see on B (via NATS).
+    let _ = bus_a.send(EventMsg::FileCreated {
+        file_id: uuid::Uuid::now_v7(),
+        owner_id: uuid::Uuid::now_v7(),
+        filename: "from-a.txt".into(),
+    });
+
+    let got = tokio::time::timeout(std::time::Duration::from_secs(5), rx_b.recv())
+        .await
+        .expect("timeout")
+        .expect("recv");
+    match got {
+        EventMsg::FileCreated { filename, .. } => {
+            assert_eq!(filename, "from-a.txt");
+        }
+        _ => panic!("unexpected event variant"),
+    }
+
+    unsafe {
+        std::env::remove_var("NATS_URL");
+        std::env::remove_var("NATS_SUBJECT");
+    }
+}
