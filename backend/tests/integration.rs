@@ -4184,3 +4184,44 @@ async fn nats_bridge_relays_events_between_buses() {
         std::env::remove_var("NATS_SUBJECT");
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn me_import_creates_files() {
+    use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
+    let app = spawn_app().await;
+    let email = nonce_email("imp");
+    let csrf = signup_with_csrf(&app, &email).await;
+
+    let body = serde_json::json!({
+        "files": [
+            {"filename": "imp1.txt", "content_type": "text/plain", "data_base64": B64.encode("alpha")},
+            {"filename": "imp2.txt", "content_type": "text/plain", "data_base64": B64.encode("beta")},
+            {"filename": "imp3.md", "content_type": "text/markdown",
+             "data_base64": B64.encode("# imported"), "tags": ["imported"]},
+        ]
+    });
+    let r = app
+        .client
+        .post(format!("{}/api/me/import", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let resp: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(resp["imported"].as_u64().unwrap(), 3);
+    assert_eq!(resp["skipped"].as_u64().unwrap(), 0);
+    // bytes = 5 + 4 + 10 = 19
+    assert_eq!(resp["bytes"].as_i64().unwrap(), 19);
+
+    // Files should appear in /files
+    let r = app
+        .client
+        .get(format!("{}/api/files", app.base))
+        .send()
+        .await
+        .unwrap();
+    let list: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(list["items"].as_array().unwrap().len(), 3);
+}

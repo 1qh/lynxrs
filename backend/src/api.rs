@@ -361,6 +361,7 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(files::quota))
         .routes(routes!(files::me_stats))
         .routes(routes!(files::me_export))
+        .routes(routes!(files::me_import))
         .routes(routes!(files::verify))
         .routes(routes!(files::presign))
         .routes(routes!(files::presign_upload))

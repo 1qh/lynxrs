@@ -212,6 +212,116 @@ pub async fn me_stats(
     }))
 }
 
+#[derive(Deserialize, Serialize, ToSchema, Validate)]
+pub struct ImportFile {
+    #[validate(length(min = 1, max = 255))]
+    pub filename: String,
+    #[validate(length(min = 1, max = 255))]
+    pub content_type: String,
+    pub data_base64: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, ToSchema, Validate)]
+pub struct ImportRequest {
+    #[validate(length(min = 1, max = 1000))]
+    pub files: Vec<ImportFile>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct ImportResult {
+    pub imported: u64,
+    pub skipped: u64,
+    pub bytes: i64,
+}
+
+#[utoipa::path(post, path = "/me/import", request_body = ImportRequest,
+    responses((status = 200, body = ImportResult), (status = 401), (status = 400)))]
+pub async fn me_import(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    jar: PrivateCookieJar,
+    Json(input): Json<ImportRequest>,
+) -> Result<Json<ImportResult>> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
+    use bytes::Bytes;
+    use object_store::{ObjectStoreExt, PutPayload, path::Path as ObjPath};
+    use sea_orm::Set;
+    use sha2::Digest;
+    input
+        .validate()
+        .map_err(|e| AppError::Validation(e.to_string()))?;
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+
+    let mut imported: u64 = 0;
+    let mut skipped: u64 = 0;
+    let mut bytes_total: i64 = 0;
+
+    for f in input.files {
+        // Decode + size check
+        let Ok(data) = B64.decode(f.data_base64.as_bytes()) else {
+            skipped += 1;
+            continue;
+        };
+        if data.len() > super::MAX_FILE_BYTES {
+            skipped += 1;
+            continue;
+        }
+        // Per-file quota check
+        if super::enforce_quota(&state.db, uid, data.len() as i64)
+            .await
+            .is_err()
+        {
+            skipped += 1;
+            continue;
+        }
+        let id = uuid::Uuid::now_v7();
+        let key = format!("u/{uid}/{id}");
+        if state
+            .storage
+            .put(
+                &ObjPath::from(key.clone()),
+                PutPayload::from_bytes(Bytes::from(data.clone())),
+            )
+            .await
+            .is_err()
+        {
+            skipped += 1;
+            continue;
+        }
+        let sha = hex::encode(sha2::Sha256::digest(&data));
+        let row = file_object::ActiveModel {
+            id: Set(id),
+            owner_id: Set(uid),
+            storage_key: Set(key),
+            filename: Set(f.filename),
+            content_type: Set(f.content_type),
+            size_bytes: Set(data.len() as i64),
+            created_at: Set(chrono::Utc::now()),
+            sha256: Set(Some(sha)),
+            deleted_at: Set(None),
+            tags: Set(f.tags),
+            org_id: Set(None),
+            description: Set(f.description),
+        };
+        use sea_orm::ActiveModelTrait;
+        if row.insert(&state.db).await.is_err() {
+            skipped += 1;
+            continue;
+        }
+        imported += 1;
+        bytes_total += data.len() as i64;
+    }
+    Ok(Json(ImportResult {
+        imported,
+        skipped,
+        bytes: bytes_total,
+    }))
+}
+
 #[utoipa::path(get, path = "/me/quota", responses((status = 200, body = QuotaDto)))]
 pub async fn quota(
     State(state): State<AppState>,
