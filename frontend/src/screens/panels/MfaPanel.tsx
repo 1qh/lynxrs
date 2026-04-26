@@ -1,6 +1,7 @@
 import { useCallback, useState } from '@lynx-js/react'
 import { api } from '../../api/client.js'
 import { useAuth } from '../../state/auth.js'
+import { reportError } from '../../state/toast.js'
 
 export function MfaPanel() {
   const user = useAuth((s) => s.user)!
@@ -11,7 +12,7 @@ export function MfaPanel() {
 
   const enroll = useCallback(async () => {
     const { data, error } = await api.POST('/mfa/enroll', {})
-    if (error) { console.error('[mfa]', error); return }
+    if (error) { reportError(error, 'MFA enroll failed'); return }
     setMfaSecret((data as { secret: string }).secret)
   }, [])
 
@@ -19,7 +20,7 @@ export function MfaPanel() {
     const code = mfaCode.trim()
     if (!code) return
     const { error } = await api.POST('/mfa/activate', { body: { code } })
-    if (error) { console.error('[mfa activate]', error); return }
+    if (error) { reportError(error, 'MFA activate failed'); return }
     const { data } = await api.GET('/auth/me', {})
     if (data) setUser(data as typeof user)
     setMfaCode('')
@@ -28,7 +29,7 @@ export function MfaPanel() {
 
   const generateRecovery = useCallback(async () => {
     const { data, error } = await api.POST('/mfa/recovery-codes', {})
-    if (error) { console.error('[mfa recovery]', error); return }
+    if (error) { reportError(error, 'Recovery codes failed'); return }
     setRecoveryCodes((data as { codes: string[] }).codes)
   }, [])
 

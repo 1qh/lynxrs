@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from '@lynx-js/react'
 import { api } from '../../api/client.js'
+import { reportError } from '../../state/toast.js'
 import type { components } from '../../api/schema.js'
 
 type FileDto = components['schemas']['FileDto']
@@ -18,7 +19,7 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
 
   useEffect(() => { void refresh() }, [refresh, refreshKey])
 
-  const upload = useCallback(async () => {
+  const uploadSample = useCallback(async () => {
     setBusy(true)
     try {
       const content = `hello from lynx ${new Date().toISOString()}`
@@ -30,13 +31,48 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
           data_base64,
         },
       })
-      if (error) console.error('[upload] error', error)
+      if (error) reportError(error, 'Upload failed')
       await refresh()
     } catch (e) {
-      console.error('[upload] threw', String(e))
+      reportError(e, 'Upload threw')
     } finally {
       setBusy(false)
     }
+  }, [refresh])
+
+  // Real-file picker — web-only. On platforms without `<input type=file>`
+  // (Lynx native), the click is a no-op; the sample button stays as fallback.
+  const pickAndUpload = useCallback(() => {
+    const doc = (globalThis as { document?: Document }).document
+    if (!doc) return
+    const el = doc.createElement('input')
+    el.type = 'file'
+    el.onchange = async () => {
+      const f = el.files?.[0]
+      if (!f) return
+      setBusy(true)
+      try {
+        const ab = await f.arrayBuffer()
+        const bytes = new Uint8Array(ab)
+        let bin = ''
+        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!)
+        const data_base64 = btoa(bin)
+        const { error } = await api.POST('/files/json', {
+          body: {
+            filename: f.name,
+            content_type: f.type || 'application/octet-stream',
+            data_base64,
+          },
+        })
+        if (error) reportError(error, 'Upload failed')
+        await refresh()
+      } catch (e) {
+        reportError(e, 'Upload threw')
+      } finally {
+        setBusy(false)
+      }
+    }
+    el.click()
   }, [refresh])
 
   const share = useCallback(async (id: string) => {
@@ -44,7 +80,7 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
       params: { path: { id } },
       body: { ttl_hours: 24 },
     })
-    if (error) { console.error('[share]', error); return }
+    if (error) { reportError(error, 'Share failed'); return }
     setShareUrl((data as { url: string }).url)
   }, [])
 
@@ -70,8 +106,11 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
 
   return (
     <view>
-      <view className="Button" bindtap={busy ? undefined : upload}>
-        <text className="ButtonText">{busy ? 'uploading…' : 'Upload sample file'}</text>
+      <view className="Button" bindtap={busy ? undefined : pickAndUpload}>
+        <text className="ButtonText">{busy ? 'uploading…' : 'Upload file'}</text>
+      </view>
+      <view className="Button ButtonGhost" bindtap={busy ? undefined : uploadSample}>
+        <text className="ButtonText">Upload sample text</text>
       </view>
       <view className="FileList">
         {files.length === 0 ? (

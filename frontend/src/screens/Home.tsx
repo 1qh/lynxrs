@@ -30,6 +30,9 @@ export function Home() {
   const [refreshKey, setRefreshKey] = useState(0)
   const [tab, setTab] = useState<Tab>(() => {
     try {
+      const loc = (globalThis as { location?: Location }).location
+      const hash = loc?.hash?.replace(/^#/, '')
+      if (hash && TABS.some((t) => t.id === hash)) return hash as Tab
       const v = (globalThis as { localStorage?: Storage }).localStorage?.getItem('simu.tab')
       if (v && TABS.some((t) => t.id === v)) return v as Tab
     } catch {}
@@ -39,8 +42,28 @@ export function Home() {
   useEffect(() => {
     try {
       ;(globalThis as { localStorage?: Storage }).localStorage?.setItem('simu.tab', tab)
+      const loc = (globalThis as { location?: Location; history?: History }).location
+      const hist = (globalThis as { history?: History }).history
+      if (loc && hist && loc.hash !== `#${tab}`) {
+        hist.replaceState(null, '', `#${tab}`)
+      }
     } catch {}
   }, [tab])
+
+  useEffect(() => {
+    const w = globalThis as {
+      addEventListener?: (e: string, fn: () => void) => void
+      removeEventListener?: (e: string, fn: () => void) => void
+      location?: Location
+    }
+    if (!w.addEventListener || !w.location) return
+    const onHash = () => {
+      const h = w.location?.hash?.replace(/^#/, '')
+      if (h && TABS.some((t) => t.id === h)) setTab(h as Tab)
+    }
+    w.addEventListener('hashchange', onHash)
+    return () => w.removeEventListener?.('hashchange', onHash)
+  }, [])
 
   useEvents(['file_created', 'file_deleted'], () => {
     setRefreshKey((k) => k + 1)

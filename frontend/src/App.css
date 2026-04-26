@@ -96,3 +96,19 @@
 .TabText { color: #8aa2ff; font-size: 14px; font-weight: 500; }
 .TabTextActive { color: #ffffff; }
 .TabPanel { padding: 8px 0; }
+
+.ToastStack {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  gap: 8px;
+  z-index: 9999;
+}
+.Toast {
+  border-radius: 8px;
+  padding: 12px 16px;
+  max-width: 360px;
+}
+.ToastError { background-color: #4a1a20; border: 1px solid #8a3340; }
+.ToastInfo { background-color: #1a2340; border: 1px solid #3a4a8a; }
+.ToastText { color: #f5d5d8; font-size: 13px; }
