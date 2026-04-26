@@ -11,9 +11,20 @@ export function AuthForm() {
   const [busy, setBusy] = useState(false)
 
   const submit = useCallback(async () => {
-    setErr(null); setBusy(true)
+    setErr(null)
+    const email = emailRef.current.trim()
+    const password = passwordRef.current
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setErr('email looks invalid')
+      return
+    }
+    if (mode === 'signup' && password.length < 12) {
+      setErr('password must be at least 12 chars')
+      return
+    }
+    setBusy(true)
     try {
-      const body = { email: emailRef.current, password: passwordRef.current }
+      const body = { email, password }
       if (mode === 'signup') {
         const { data, error } = await api.POST('/auth/signup', { body })
         if (error) setErr((error as { message?: string }).message ?? 'failed')
