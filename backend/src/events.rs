@@ -124,14 +124,26 @@ async fn handle_socket(socket: WebSocket, bus: EventBus) {
     .unwrap_or_default();
     let _ = tx.send(Message::Text(hello.into())).await;
 
-    // Forward broadcast → client.
+    // Forward broadcast → client. Handle Lagged separately so a slow client
+    // doesn't silently lose its forwarder; we just skip the gap and keep
+    // delivering future events. Closed = bus dropped → real disconnect.
     let fwd = tokio::spawn(async move {
-        while let Ok(ev) = sub.recv().await {
-            let Ok(body) = serde_json::to_string(&ev) else {
-                continue;
-            };
-            if tx.send(Message::Text(body.into())).await.is_err() {
-                break;
+        use tokio::sync::broadcast::error::RecvError;
+        loop {
+            match sub.recv().await {
+                Ok(ev) => {
+                    let Ok(body) = serde_json::to_string(&ev) else {
+                        continue;
+                    };
+                    if tx.send(Message::Text(body.into())).await.is_err() {
+                        break;
+                    }
+                }
+                Err(RecvError::Lagged(n)) => {
+                    metrics::counter!("simu_ws_lagged_total").increment(n);
+                    tracing::warn!(skipped = n, "ws subscriber lagged");
+                }
+                Err(RecvError::Closed) => break,
             }
         }
     });
