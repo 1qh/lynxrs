@@ -5,11 +5,19 @@ import { execSync } from 'node:child_process'
 const BACKEND = 'http://localhost:8088'
 
 test('admin impersonation issues session as target user', async () => {
-  // Seed an admin via simu-admin CLI.
+  // Seed an admin via simu-admin CLI. Spec needs the workspace layout, so
+  // we skip when the binary isn't where we expect.
+  const repoRoot = process.env.SIMU_REPO_ROOT ?? '/Users/o/simu'
+  try {
+    execSync(`test -f ${repoRoot}/backend/target/release/simu-admin`, { stdio: 'pipe' })
+  } catch {
+    test.skip(true, `simu-admin CLI not at ${repoRoot}/backend/target/release`)
+    return
+  }
   const adminEmail = `admin-imp-${Date.now()}@t.local`
   const pw = 'hunter2hunter2'
   execSync(
-    `env $(cat /Users/o/simu/backend/.env | xargs) /Users/o/simu/backend/target/release/simu-admin create --email ${adminEmail} --password ${pw}`,
+    `env $(cat ${repoRoot}/backend/.env | xargs) ${repoRoot}/backend/target/release/simu-admin create --email ${adminEmail} --password ${pw}`,
     { stdio: 'pipe' },
   )
   const admin = await newApi()

@@ -3,11 +3,13 @@ import { newApi } from './_api'
 import { execSync } from 'node:child_process'
 
 test('admin /admin/backup runs pg_dump and returns key+size', async () => {
+  const repoRoot = process.env.SIMU_REPO_ROOT ?? '/Users/o/simu'
   const adminEmail = `bk-${Date.now()}@t.local`
   const pw = 'hunter2hunter2'
   try {
+    execSync(`test -f ${repoRoot}/backend/target/release/simu-admin`, { stdio: 'pipe' })
     execSync(
-      `env $(cat /Users/o/simu/backend/.env | xargs) /Users/o/simu/backend/target/release/simu-admin create --email ${adminEmail} --password ${pw}`,
+      `env $(cat ${repoRoot}/backend/.env | xargs) ${repoRoot}/backend/target/release/simu-admin create --email ${adminEmail} --password ${pw}`,
       { stdio: 'pipe' },
     )
   } catch (e) {
