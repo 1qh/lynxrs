@@ -134,3 +134,23 @@ ci:
   just e2e
   just audit
   just secret-scan
+
+# ────────── act (local CI matching .act/ci.yml) ──────────
+
+act-backend:
+  act -j backend
+
+act-frontend:
+  act -j frontend
+
+act-security:
+  act -j security
+
+act-e2e:
+  act -j e2e
+
+act-schemathesis:
+  act -j schemathesis
+
+# Run every act job sequentially. First failure stops the chain.
+act-ci: act-backend act-frontend act-security act-schemathesis act-e2e
