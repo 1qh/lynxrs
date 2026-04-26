@@ -168,13 +168,23 @@ pub async fn sse_handler(
     let _uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     let mut sub = state.bus.subscribe();
     let stream = async_stream::stream! {
+        use tokio::sync::broadcast::error::RecvError;
         // Initial ping
         yield Ok::<_, std::convert::Infallible>(axum::response::sse::Event::default()
             .event("ping")
             .data(chrono::Utc::now().timestamp_millis().to_string()));
-        while let Ok(ev) = sub.recv().await {
-            if let Ok(body) = serde_json::to_string(&ev) {
-                yield Ok(axum::response::sse::Event::default().data(body));
+        loop {
+            match sub.recv().await {
+                Ok(ev) => {
+                    if let Ok(body) = serde_json::to_string(&ev) {
+                        yield Ok(axum::response::sse::Event::default().data(body));
+                    }
+                }
+                Err(RecvError::Lagged(n)) => {
+                    metrics::counter!("simu_sse_lagged_total").increment(n);
+                    tracing::warn!(skipped = n, "sse subscriber lagged");
+                }
+                Err(RecvError::Closed) => break,
             }
         }
     };
