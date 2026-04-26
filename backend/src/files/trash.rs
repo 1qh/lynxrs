@@ -71,14 +71,20 @@ pub async fn empty_trash(
         .filter(file_object::Column::DeletedAt.is_not_null())
         .all(&state.db)
         .await?;
+    // DB delete first; storage delete best-effort. If storage fails, the
+    // bytes are orphaned but invisible to the app, and housekeeping's orphan
+    // sweep will reclaim them. Reverse order would leave a row pointing to a
+    // missing object — visible to the user but unusable.
     let mut purged = 0;
     for r in rows {
-        let p = ObjPath::from(r.storage_key.clone());
-        let _ = state.storage.delete(&p).await;
-        let _ = file_object::Entity::delete_by_id(r.id)
+        if file_object::Entity::delete_by_id(r.id)
             .exec(&state.db)
-            .await;
-        purged += 1;
+            .await
+            .is_ok()
+        {
+            let _ = state.storage.delete(&ObjPath::from(r.storage_key)).await;
+            purged += 1;
+        }
     }
     Ok(Json(serde_json::json!({ "purged": purged })))
 }
@@ -99,10 +105,10 @@ pub async fn purge(
     if row.owner_id != uid || row.deleted_at.is_none() {
         return Err(AppError::NotFound);
     }
-    let obj_path = ObjPath::from(row.storage_key.clone());
-    let _ = state.storage.delete(&obj_path).await;
+    // DB first — same reasoning as `empty_trash`.
     file_object::Entity::delete_by_id(id)
         .exec(&state.db)
         .await?;
+    let _ = state.storage.delete(&ObjPath::from(row.storage_key)).await;
     Ok(StatusCode::NO_CONTENT)
 }
