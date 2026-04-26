@@ -20,16 +20,26 @@ use crate::{
     state::AppState,
 };
 
+/// A stored file owned by a user (and optionally scoped to an org).
 #[derive(Serialize, ToSchema)]
 pub struct FileDto {
+    /// UUIDv7 of the file. Stable across renames/moves.
     pub id: Uuid,
+    /// Original upload filename. Not unique; sanitized on download.
     pub filename: String,
+    /// MIME type as claimed at upload (validated with magic bytes for images).
     pub content_type: String,
+    /// Byte length of the stored object.
     pub size_bytes: i64,
+    /// Server timestamp at upload.
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Hex-encoded SHA-256 of the bytes; used for integrity verification.
     pub sha256: Option<String>,
+    /// User-controlled tags; max 16 tags, 32 chars each.
     pub tags: Vec<String>,
+    /// If set, the file lives in an org (storage prefix `o/{org}/...`).
     pub org_id: Option<Uuid>,
+    /// Free-form description (max ~2 KB).
     pub description: Option<String>,
 }
 

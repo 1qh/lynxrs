@@ -41,14 +41,24 @@ pub struct LoginInput {
     pub totp_code: Option<String>,
 }
 
+/// A user account as exposed to the client. Sensitive fields (password hash,
+/// TOTP secret, recovery code hashes, session_version) are intentionally
+/// omitted.
 #[derive(Serialize, ToSchema)]
 pub struct UserDto {
+    /// UUIDv7 of the user.
     pub id: Uuid,
+    /// Login email; lowercased, unique per active account.
     pub email: String,
+    /// Role string: `"user"` or `"admin"`.
     pub role: String,
+    /// True once the email-verification link has been clicked.
     pub email_verified: bool,
+    /// True once TOTP enrollment has been activated with a valid code.
     pub totp_enabled: bool,
+    /// Optional display name (1..=80 chars).
     pub display_name: Option<String>,
+    /// Optional avatar URL; validated as a URL on PATCH.
     pub avatar_url: Option<String>,
     /// Short-lived CSRF token; echo in X-CSRF-Token on mutating requests.
     /// Also set as simu_csrf cookie (non-HttpOnly) for same-origin clients.

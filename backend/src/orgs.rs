@@ -17,11 +17,17 @@ use crate::{
 };
 use sha2::Digest;
 
+/// An organization (tenant). Members access org-scoped files via the
+/// `o/{org_id}/...` storage prefix and a per-org quota.
 #[derive(Serialize, ToSchema)]
 pub struct OrgDto {
+    /// UUIDv7 of the org.
     pub id: Uuid,
+    /// Display name (1..=80 chars).
     pub name: String,
+    /// URL-safe slug (`[a-z0-9][a-z0-9-]{1,39}`); unique.
     pub slug: String,
+    /// Server timestamp at creation.
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
