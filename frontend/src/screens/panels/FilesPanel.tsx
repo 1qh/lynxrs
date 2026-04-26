@@ -8,13 +8,21 @@ type FileDto = components['schemas']['FileDto']
 export function FilesPanel({ refreshKey }: { refreshKey: number }) {
   const [files, setFiles] = useState<FileDto[]>([])
   const [busy, setBusy] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [starred, setStarred] = useState<FileDto[]>([])
   const [descEdit, setDescEdit] = useState<{ id: string; text: string } | null>(null)
+  const [query, setQuery] = useState('')
 
   const refresh = useCallback(async () => {
-    const { data } = await api.GET('/files', { params: { query: {} } })
-    if (data) setFiles((data as { items: FileDto[] }).items ?? [])
+    setLoading(true)
+    try {
+      const { data, error } = await api.GET('/files', { params: { query: {} } })
+      if (error) reportError(error, 'Load files failed')
+      if (data) setFiles((data as { items: FileDto[] }).items ?? [])
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { void refresh() }, [refresh, refreshKey])
@@ -112,11 +120,23 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
       <view className="Button ButtonGhost" bindtap={busy ? undefined : uploadSample}>
         <text className="ButtonText">Upload sample text</text>
       </view>
+      <input
+        className="Input"
+        placeholder="filter files by name…"
+        type="text"
+        bindinput={(e: { detail: { value: string } }) => setQuery(e.detail.value)}
+      />
       <view className="FileList">
-        {files.length === 0 ? (
+        {loading ? (
+          <text className="Muted">loading…</text>
+        ) : files.length === 0 ? (
           <text className="Muted">no files yet</text>
         ) : (
-          files.map((f) => (
+          files
+            .filter((f) =>
+              query.trim() ? f.filename.toLowerCase().includes(query.trim().toLowerCase()) : true,
+            )
+            .map((f) => (
             <view key={f.id} className="FileRow">
               <text className="FileName" bindtap={() => void share(f.id)}>{f.filename}</text>
               <text className="FileMeta">{f.size_bytes}B · {f.content_type}</text>
