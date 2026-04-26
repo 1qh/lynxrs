@@ -3443,7 +3443,13 @@ async fn full_webhook_dispatcher_delivers_on_event() {
         .send()
         .await
         .unwrap();
-    assert_eq!(r.status(), StatusCode::CREATED);
+    let status = r.status();
+    let body = r.text().await.unwrap_or_default();
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "upload failed: {status} body={body}"
+    );
 
     // Dispatcher polls/dispatches; allow up to 5s.
     let mut delivered = false;
