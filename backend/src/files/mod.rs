@@ -382,12 +382,15 @@ pub async fn move_file(
     }
     // Rewrite storage_key prefix when crossing org boundary so files end up
     // under the right namespace (`o/{org}/...` for org-owned, `u/{uid}/...`
-    // for personal). Copy then delete the old key — object_store doesn't have
-    // a primitive rename.
+    // for personal). object_store has no rename primitive, so: copy to new,
+    // commit DB, then delete old (best-effort). On DB failure we drop the new
+    // copy so we never leak a key that no row references — which would be
+    // invisible to the app and miss housekeeping.
     let new_key = storage_key_for(uid, input.org_id, id);
     let key_changed = new_key != row.storage_key;
+    let old_key = row.storage_key.clone();
     if key_changed {
-        let old = ObjPath::from(row.storage_key.clone());
+        let old = ObjPath::from(old_key.clone());
         let bytes = state
             .storage
             .get(&old)
@@ -402,14 +405,24 @@ pub async fn move_file(
                 PutPayload::from_bytes(bytes),
             )
             .await?;
-        let _ = state.storage.delete(&old).await;
     }
     let mut am: file_object::ActiveModel = row.into();
     am.org_id = Set(input.org_id);
     if key_changed {
-        am.storage_key = Set(new_key);
+        am.storage_key = Set(new_key.clone());
     }
-    let updated = am.update(&state.db).await?;
+    let updated = match am.update(&state.db).await {
+        Ok(u) => u,
+        Err(e) => {
+            if key_changed {
+                let _ = state.storage.delete(&ObjPath::from(new_key)).await;
+            }
+            return Err(e.into());
+        }
+    };
+    if key_changed {
+        let _ = state.storage.delete(&ObjPath::from(old_key)).await;
+    }
     Ok(Json(FileDto::from(updated)))
 }
 
