@@ -1,4 +1,4 @@
-import { useCallback, useState } from '@lynx-js/react'
+import { useCallback, useEffect, useState } from '@lynx-js/react'
 import { api } from '../api/client.js'
 import { useAuth } from '../state/auth.js'
 import { useEvents } from '../lib/useEvents.js'
@@ -28,7 +28,19 @@ export function Home() {
   const user = useAuth((s) => s.user)!
   const setUser = useAuth((s) => s.setUser)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [tab, setTab] = useState<Tab>('files')
+  const [tab, setTab] = useState<Tab>(() => {
+    try {
+      const v = (globalThis as { localStorage?: Storage }).localStorage?.getItem('simu.tab')
+      if (v && TABS.some((t) => t.id === v)) return v as Tab
+    } catch {}
+    return 'files'
+  })
+
+  useEffect(() => {
+    try {
+      ;(globalThis as { localStorage?: Storage }).localStorage?.setItem('simu.tab', tab)
+    } catch {}
+  }, [tab])
 
   useEvents(['file_created', 'file_deleted'], () => {
     setRefreshKey((k) => k + 1)
