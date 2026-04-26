@@ -11,10 +11,24 @@ import { WebhooksPanel } from './panels/WebhooksPanel.js'
 import { AuditPanel } from './panels/AuditPanel.js'
 import { MfaPanel } from './panels/MfaPanel.js'
 
+type Tab = 'files' | 'profile' | 'orgs' | 'trash' | 'webhooks' | 'audit' | 'mfa' | 'admin'
+
+const TABS: ReadonlyArray<{ id: Tab; label: string; adminOnly?: boolean }> = [
+  { id: 'files', label: 'Files' },
+  { id: 'profile', label: 'Profile' },
+  { id: 'orgs', label: 'Orgs' },
+  { id: 'trash', label: 'Trash' },
+  { id: 'webhooks', label: 'Webhooks' },
+  { id: 'audit', label: 'Audit' },
+  { id: 'mfa', label: 'MFA' },
+  { id: 'admin', label: 'Admin', adminOnly: true },
+]
+
 export function Home() {
   const user = useAuth((s) => s.user)!
   const setUser = useAuth((s) => s.setUser)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [tab, setTab] = useState<Tab>('files')
 
   useEvents(['file_created', 'file_deleted'], () => {
     setRefreshKey((k) => k + 1)
@@ -36,6 +50,8 @@ export function Home() {
 
   const bumpFiles = useCallback(() => setRefreshKey((k) => k + 1), [])
 
+  const visibleTabs = TABS.filter((t) => !t.adminOnly || user.role === 'admin')
+
   return (
     <view className="Card">
       <text className="H2">Hello {user.email}</text>
@@ -44,14 +60,27 @@ export function Home() {
           <text className="BannerText">Email not verified · tap to resend</text>
         </view>
       ) : null}
-      {user.role === 'admin' ? <AdminPanel /> : null}
-      <FilesPanel refreshKey={refreshKey} />
-      <ProfilePanel />
-      <OrgsPanel />
-      <TrashPanel onRestore={bumpFiles} />
-      <WebhooksPanel />
-      <AuditPanel />
-      <MfaPanel />
+      <view className="TabBar">
+        {visibleTabs.map((t) => (
+          <view
+            key={t.id}
+            className={tab === t.id ? 'Tab TabActive' : 'Tab'}
+            bindtap={() => setTab(t.id)}
+          >
+            <text className={tab === t.id ? 'TabText TabTextActive' : 'TabText'}>{t.label}</text>
+          </view>
+        ))}
+      </view>
+      <view className="TabPanel">
+        {tab === 'files' ? <FilesPanel refreshKey={refreshKey} /> : null}
+        {tab === 'profile' ? <ProfilePanel /> : null}
+        {tab === 'orgs' ? <OrgsPanel /> : null}
+        {tab === 'trash' ? <TrashPanel onRestore={bumpFiles} /> : null}
+        {tab === 'webhooks' ? <WebhooksPanel /> : null}
+        {tab === 'audit' ? <AuditPanel /> : null}
+        {tab === 'mfa' ? <MfaPanel /> : null}
+        {tab === 'admin' && user.role === 'admin' ? <AdminPanel /> : null}
+      </view>
       <view className="Button ButtonGhost" bindtap={logout}>
         <text className="ButtonText">Log out</text>
       </view>

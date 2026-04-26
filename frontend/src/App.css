@@ -78,3 +78,21 @@
   border-top: 1px solid #2a355a;
   margin-top: 8px;
 }
+
+.TabBar {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 0;
+  border-bottom: 1px solid #2a355a;
+  margin-bottom: 12px;
+}
+.Tab {
+  background-color: #1a2340;
+  border-radius: 8px;
+  padding: 8px 14px;
+}
+.TabActive { background-color: #3a4a8a; }
+.TabText { color: #8aa2ff; font-size: 14px; font-weight: 500; }
+.TabTextActive { color: #ffffff; }
+.TabPanel { padding: 8px 0; }
