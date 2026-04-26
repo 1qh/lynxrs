@@ -77,6 +77,23 @@ async fn main() -> anyhow::Result<()> {
                 .map_err(|e| anyhow::anyhow!("hash: {e}"))?
                 .to_string();
 
+            // Pass --mfa to provision a real TOTP secret + enable totp_enabled
+            // so the admin satisfies the REQUIRE_ADMIN_MFA policy out of the
+            // box. Default leaves it disabled (operator enrolls via UI).
+            let want_mfa = std::env::args().any(|a| a == "--mfa");
+            let (totp_secret, totp_enabled) = if !want_mfa {
+                (None, false)
+            } else {
+                use totp_rs::{Algorithm, Secret, TOTP};
+                let bytes = Secret::generate_secret().to_bytes()?;
+                let totp = TOTP::new(Algorithm::SHA1, 6, 1, 30, bytes.clone(), Some("simu".into()), email_norm.clone())?;
+                let b32 = Secret::Raw(bytes).to_encoded().to_string();
+                println!("MFA secret (scan into Authenticator app, store securely):");
+                println!("  {b32}");
+                println!("  otpauth url: {}", totp.get_url());
+                (Some(b32), true)
+            };
+
             let now = chrono::Utc::now();
             user::ActiveModel {
                 id: Set(uuid::Uuid::now_v7()),
@@ -87,8 +104,8 @@ async fn main() -> anyhow::Result<()> {
                 session_version: Set(0),
                 created_at: Set(now),
                 updated_at: Set(now),
-                totp_secret: Set(None),
-                totp_enabled: Set(false),
+                totp_secret: Set(totp_secret),
+                totp_enabled: Set(totp_enabled),
                 failed_login_count: Set(0),
                 locked_until: Set(None),
                 display_name: Set(None),
