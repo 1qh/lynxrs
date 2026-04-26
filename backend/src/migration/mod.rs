@@ -32,6 +32,7 @@ mod m20260424_000029_file_stars;
 mod m20260424_000030_file_description;
 mod m20260424_000031_audit_hash_chain;
 mod m20260424_000032_user_soft_delete;
+mod m20260424_000033_audit_chain_seq;
 
 pub struct Migrator;
 
@@ -71,6 +72,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260424_000030_file_description::Migration),
             Box::new(m20260424_000031_audit_hash_chain::Migration),
             Box::new(m20260424_000032_user_soft_delete::Migration),
+            Box::new(m20260424_000033_audit_chain_seq::Migration),
         ]
     }
 }

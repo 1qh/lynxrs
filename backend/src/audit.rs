@@ -2,7 +2,7 @@ use axum::{Json, extract::State, http::HeaderMap};
 use axum_extra::extract::PrivateCookieJar;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set, Statement, TransactionTrait,
+    QuerySelect, Statement, TransactionTrait,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -57,11 +57,9 @@ pub async fn record(
         .and_then(|v| v.to_str().ok())
         .map(String::from);
     // Tx + xact advisory lock serializes chain growth under concurrent writes.
-    // id + created_at are generated INSIDE the lock so the chain order
-    // (verified by `order_by_asc(created_at, id)`) cannot disagree with the
-    // insertion order. If we generated them outside, two concurrent writers
-    // could end up with non-monotonic created_at relative to their lock
-    // acquisition order, breaking verification.
+    // The chain tip is identified by max(chain_seq) — a BIGSERIAL assigned
+    // inside the lock — because created_at can collide at millisecond
+    // resolution and uuid v7 is not strictly monotonic across processes.
     let res = async {
         let tx = db.begin().await?;
         tx.execute(Statement::from_string(
@@ -72,8 +70,7 @@ pub async fn record(
         let id = Uuid::now_v7();
         let created_at = chrono::Utc::now();
         let prev = audit_event::Entity::find()
-            .order_by_desc(audit_event::Column::CreatedAt)
-            .order_by_desc(audit_event::Column::Id)
+            .order_by_desc(audit_event::Column::ChainSeq)
             .limit(1)
             .one(&tx)
             .await?
@@ -81,18 +78,25 @@ pub async fn record(
             .unwrap_or_else(|| "GENESIS".to_string());
         let canonical = canonical_row(&id, &user_id, action, &ip, &ua, &meta, &created_at);
         let row_hash = hash_chain(&prev, &canonical);
-        let row = audit_event::ActiveModel {
-            id: Set(id),
-            user_id: Set(user_id),
-            action: Set(action.to_string()),
-            ip: Set(ip),
-            user_agent: Set(ua),
-            meta: Set(meta),
-            created_at: Set(created_at),
-            prev_hash: Set(Some(prev)),
-            row_hash: Set(Some(row_hash)),
-        };
-        audit_event::Entity::insert(row).exec(&tx).await?;
+        // Raw INSERT skips chain_seq so postgres assigns from the BIGSERIAL.
+        tx.execute(Statement::from_sql_and_values(
+            tx.get_database_backend(),
+            "INSERT INTO audit_events \
+             (id, user_id, action, ip, user_agent, meta, created_at, prev_hash, row_hash) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+            [
+                id.into(),
+                user_id.into(),
+                action.into(),
+                ip.into(),
+                ua.into(),
+                meta.into(),
+                created_at.into(),
+                Some(prev).into(),
+                Some(row_hash).into(),
+            ],
+        ))
+        .await?;
         tx.commit().await?;
         Ok::<_, sea_orm::DbErr>(())
     }
@@ -125,8 +129,7 @@ pub async fn verify_chain(
         return Err(crate::error::AppError::Unauthorized);
     }
     let rows = audit_event::Entity::find()
-        .order_by_asc(audit_event::Column::CreatedAt)
-        .order_by_asc(audit_event::Column::Id)
+        .order_by_asc(audit_event::Column::ChainSeq)
         .all(&state.db)
         .await?;
     let total = rows.len() as u64;

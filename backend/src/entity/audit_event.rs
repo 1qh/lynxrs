@@ -14,6 +14,10 @@ pub struct Model {
     pub created_at: ChronoDateTimeUtc,
     pub prev_hash: Option<String>,
     pub row_hash: Option<String>,
+    /// Monotonic chain ordering, assigned by `BIGSERIAL` under the advisory
+    /// lock that gates inserts. Use this — not `created_at` — to order the
+    /// chain for verification.
+    pub chain_seq: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
