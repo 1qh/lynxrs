@@ -1,0 +1,4 @@
+-W .act
+--container-architecture linux/arm64
+--container-daemon-socket /var/run/docker.sock
+--pull=false
