@@ -114,15 +114,20 @@ pub(crate) async fn enforce_org_quota(
     org_id: Uuid,
     incoming: i64,
 ) -> Result<()> {
-    let sizes: Vec<i64> = file_object::Entity::find()
-        .filter(file_object::Column::OrgId.eq(org_id))
-        .filter(file_object::Column::DeletedAt.is_null())
-        .select_only()
-        .column(file_object::Column::SizeBytes)
-        .into_tuple()
-        .all(db)
+    use sea_orm::{ConnectionTrait, Statement};
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            "SELECT COALESCE(SUM(size_bytes), 0)::BIGINT \
+             FROM file_objects \
+             WHERE org_id = $1 AND deleted_at IS NULL",
+            [org_id.into()],
+        ))
         .await?;
-    let used: i64 = sizes.iter().sum();
+    let used: i64 = row
+        .map(|r| r.try_get::<i64>("", "coalesce"))
+        .transpose()?
+        .unwrap_or(0);
     if used + incoming > ORG_QUOTA_BYTES {
         return Err(AppError::BadRequest(format!(
             "org quota exceeded: {} used + {} incoming > {} limit",
@@ -160,14 +165,21 @@ pub(crate) async fn can_access(
 }
 
 pub(crate) async fn used_bytes(db: &sea_orm::DatabaseConnection, uid: Uuid) -> Result<i64> {
-    let sizes: Vec<i64> = file_object::Entity::find()
-        .filter(file_object::Column::OwnerId.eq(uid))
-        .select_only()
-        .column(file_object::Column::SizeBytes)
-        .into_tuple()
-        .all(db)
+    use sea_orm::{ConnectionTrait, Statement};
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            "SELECT COALESCE(SUM(size_bytes), 0)::BIGINT \
+             FROM file_objects \
+             WHERE owner_id = $1 AND deleted_at IS NULL",
+            [uid.into()],
+        ))
         .await?;
-    Ok(sizes.iter().sum())
+    let total: i64 = row
+        .map(|r| r.try_get::<i64>("", "coalesce"))
+        .transpose()?
+        .unwrap_or(0);
+    Ok(total)
 }
 
 pub(crate) async fn enforce_quota(
