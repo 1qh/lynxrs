@@ -48,16 +48,8 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
     }
   }, [refresh])
 
-  // Real-file picker — web-only. On platforms without `<input type=file>`
-  // (Lynx native), the click is a no-op; the sample button stays as fallback.
-  const pickAndUpload = useCallback(() => {
-    const doc = (globalThis as { document?: Document }).document
-    if (!doc) return
-    const el = doc.createElement('input')
-    el.type = 'file'
-    el.onchange = async () => {
-      const f = el.files?.[0]
-      if (!f) return
+  const uploadBlob = useCallback(
+    async (f: File) => {
       setBusy(true)
       try {
         const ab = await f.arrayBuffer()
@@ -79,9 +71,46 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
       } finally {
         setBusy(false)
       }
+    },
+    [refresh],
+  )
+
+  // Real-file picker — web-only. On platforms without `<input type=file>`
+  // (Lynx native), the click is a no-op; the sample button stays as fallback.
+  const pickAndUpload = useCallback(() => {
+    const doc = (globalThis as { document?: Document }).document
+    if (!doc) return
+    const el = doc.createElement('input')
+    el.type = 'file'
+    el.onchange = () => {
+      const f = el.files?.[0]
+      if (f) void uploadBlob(f)
     }
     el.click()
-  }, [refresh])
+  }, [uploadBlob])
+
+  // Drag-drop: register on document so drops anywhere on the page upload.
+  // Lynx's <view> doesn't bubble HTML5 drag events naturally, so we listen
+  // at document level. When the user drops on a non-FilesPanel area the
+  // upload still fires — acceptable since it's the only file action.
+  useEffect(() => {
+    const doc = (globalThis as { document?: Document }).document
+    if (!doc) return
+    const onDragOver = (e: DragEvent) => {
+      e.preventDefault()
+    }
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault()
+      const f = e.dataTransfer?.files?.[0]
+      if (f) void uploadBlob(f)
+    }
+    doc.addEventListener('dragover', onDragOver)
+    doc.addEventListener('drop', onDrop)
+    return () => {
+      doc.removeEventListener('dragover', onDragOver)
+      doc.removeEventListener('drop', onDrop)
+    }
+  }, [uploadBlob])
 
   const share = useCallback(async (id: string) => {
     const { data, error } = await api.POST('/files/{id}/shares', {
