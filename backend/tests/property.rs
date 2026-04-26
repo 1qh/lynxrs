@@ -174,8 +174,9 @@ fn telemetry_layer_returns_none_when_otlp_endpoint_unset() {
     }
     // Call via Registry-typed subscriber. The function is generic over S.
     // We don't actually subscribe — just check the option is None.
-    let layer: Option<Box<dyn tracing_subscriber::Layer<tracing_subscriber::Registry> + Send + Sync>> =
-        telemetry::maybe_otel_layer();
+    let layer: Option<
+        Box<dyn tracing_subscriber::Layer<tracing_subscriber::Registry> + Send + Sync>,
+    > = telemetry::maybe_otel_layer();
     assert!(layer.is_none(), "expected None when OTLP_ENDPOINT unset");
 }
 

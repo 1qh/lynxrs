@@ -137,7 +137,7 @@ pub async fn create_version(
 
     snapshot_current(&state.db, &row).await?;
 
-    let new_key = format!("u/{uid}/{}", Uuid::now_v7());
+    let new_key = super::storage_key_for(uid, row.org_id, Uuid::now_v7());
     state
         .storage
         .put(

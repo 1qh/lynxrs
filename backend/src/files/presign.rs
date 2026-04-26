@@ -55,7 +55,7 @@ pub async fn presign_upload(
     let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
     enforce_quota(&state.db, uid, input.size_bytes).await?;
     let file_id = Uuid::now_v7();
-    let storage_key = format!("u/{uid}/{file_id}");
+    let storage_key = super::storage_key_for(uid, None, file_id);
 
     file_object::ActiveModel {
         id: Set(file_id),

@@ -55,6 +55,16 @@ impl From<file_object::Model> for FileDto {
 
 pub(crate) const MAX_FILE_BYTES: usize = 50 * 1024 * 1024; // 50 MB cap for spike
 pub(crate) const USER_QUOTA_BYTES: i64 = 500 * 1024 * 1024; // 500 MB per user
+
+/// Object-store key generator. Files in an org live under `o/{org}/{file_id}`;
+/// personal files under `u/{uid}/{file_id}`. Keep this the single source of
+/// truth — move_file uses it to compute the new prefix when changing org_id.
+pub fn storage_key_for(uid: Uuid, org_id: Option<Uuid>, file_id: Uuid) -> String {
+    match org_id {
+        Some(org) => format!("o/{org}/{file_id}"),
+        None => format!("u/{uid}/{file_id}"),
+    }
+}
 const ORG_QUOTA_BYTES: i64 = 5 * 1024 * 1024 * 1024; // 5 GB per org
 
 pub fn image_magic_ok(claimed: &str, data: &[u8]) -> bool {
@@ -195,7 +205,7 @@ pub async fn upload(
         .to_string();
 
     let id = Uuid::now_v7();
-    let storage_key = format!("u/{uid}/{id}");
+    let storage_key = storage_key_for(uid, None, id);
     let obj_path = ObjPath::from(storage_key.clone());
 
     let mut upload = state.storage.put_multipart(&obj_path).await?;
@@ -589,7 +599,7 @@ pub async fn upload_json(
     }
 
     let id = Uuid::now_v7();
-    let storage_key = format!("u/{uid}/{id}");
+    let storage_key = storage_key_for(uid, input.org_id, id);
     let obj_path = ObjPath::from(storage_key.clone());
     state
         .storage
@@ -755,8 +765,35 @@ pub async fn move_file(
         }
         enforce_org_quota(&state.db, org, row.size_bytes).await?;
     }
+    // Rewrite storage_key prefix when crossing org boundary so files end up
+    // under the right namespace (`o/{org}/...` for org-owned, `u/{uid}/...`
+    // for personal). Copy then delete the old key — object_store doesn't have
+    // a primitive rename.
+    let new_key = storage_key_for(uid, input.org_id, id);
+    let key_changed = new_key != row.storage_key;
+    if key_changed {
+        let old = ObjPath::from(row.storage_key.clone());
+        let bytes = state
+            .storage
+            .get(&old)
+            .await?
+            .bytes()
+            .await
+            .map_err(|e| AppError::Other(anyhow::anyhow!("get for move: {e}")))?;
+        state
+            .storage
+            .put(
+                &ObjPath::from(new_key.clone()),
+                PutPayload::from_bytes(bytes),
+            )
+            .await?;
+        let _ = state.storage.delete(&old).await;
+    }
     let mut am: file_object::ActiveModel = row.into();
     am.org_id = Set(input.org_id);
+    if key_changed {
+        am.storage_key = Set(new_key);
+    }
     let updated = am.update(&state.db).await?;
     Ok(Json(FileDto::from(updated)))
 }

@@ -127,8 +127,13 @@ pub async fn run_once(
             .into_iter()
             .map(|r| r.storage_key)
             .collect();
-        let prefix = object_store::path::Path::from("u/");
-        let mut stream = storage.list(Some(&prefix));
+        // Walk both personal (u/) and org-scoped (o/) prefixes.
+        let prefixes = [
+            object_store::path::Path::from("u/"),
+            object_store::path::Path::from("o/"),
+        ];
+        let mut stream =
+            futures::stream::select_all(prefixes.iter().map(|p| storage.list(Some(p))));
         const ITER_LIMIT: usize = 5_000;
         let mut seen = 0usize;
         while let Some(item) = stream.next().await {

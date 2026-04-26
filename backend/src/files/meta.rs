@@ -279,7 +279,7 @@ pub async fn me_import(
             continue;
         }
         let id = uuid::Uuid::now_v7();
-        let key = format!("u/{uid}/{id}");
+        let key = super::storage_key_for(uid, None, id);
         if state
             .storage
             .put(

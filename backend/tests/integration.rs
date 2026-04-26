@@ -4272,3 +4272,120 @@ async fn oauth_unknown_provider_400() {
         .unwrap();
     assert_eq!(r.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn move_into_org_rewrites_storage_key_prefix() {
+    let app = spawn_app().await;
+    let email = nonce_email("mvkey");
+    let csrf = signup_with_csrf(&app, &email).await;
+    use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
+
+    // Personal upload → key starts with u/
+    let r = app
+        .client
+        .post(format!("{}/api/files/json", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({
+            "filename": "p.txt",
+            "content_type": "text/plain",
+            "data_base64": B64.encode("personal"),
+        }))
+        .send()
+        .await
+        .unwrap();
+    let file_id = r.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Inspect storage_key directly via DB
+    use sea_orm::{ColumnTrait, ConnectOptions, Database, EntityTrait, QueryFilter};
+    use simu_backend::entity::file_object;
+    let pg_host = app._pg.get_host().await.unwrap();
+    let pg_port = app._pg.get_host_port_ipv4(5432).await.unwrap();
+    let url = format!("postgres://postgres:postgres@{pg_host}:{pg_port}/postgres");
+    let db = Database::connect(ConnectOptions::new(url)).await.unwrap();
+    let row = file_object::Entity::find()
+        .filter(file_object::Column::Id.eq(uuid::Uuid::parse_str(&file_id).unwrap()))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        row.storage_key.starts_with("u/"),
+        "personal: {}",
+        row.storage_key
+    );
+
+    // Create org + move
+    let r = app
+        .client
+        .post(format!("{}/api/orgs", app.base))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({
+            "name": "MK",
+            "slug": format!("mk-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)),
+        }))
+        .send()
+        .await
+        .unwrap();
+    let org_id = r.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let r = app
+        .client
+        .patch(format!("{}/api/files/{}/move", app.base, file_id))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({ "org_id": org_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+
+    // Storage key must now start with o/
+    let row = file_object::Entity::find()
+        .filter(file_object::Column::Id.eq(uuid::Uuid::parse_str(&file_id).unwrap()))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        row.storage_key.starts_with("o/"),
+        "org: {}",
+        row.storage_key
+    );
+    assert!(row.storage_key.contains(&org_id));
+
+    // Download still works (proves data was actually copied)
+    let r = app
+        .client
+        .get(format!("{}/api/files/{}", app.base, file_id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert_eq!(r.text().await.unwrap(), "personal");
+
+    // Move back to personal → key starts with u/
+    let r = app
+        .client
+        .patch(format!("{}/api/files/{}/move", app.base, file_id))
+        .header("x-csrf-token", &csrf)
+        .json(&serde_json::json!({ "org_id": null }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let row = file_object::Entity::find()
+        .filter(file_object::Column::Id.eq(uuid::Uuid::parse_str(&file_id).unwrap()))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        row.storage_key.starts_with("u/"),
+        "back: {}",
+        row.storage_key
+    );
+}
