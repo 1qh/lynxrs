@@ -40,11 +40,12 @@ jobs:
       - name: unit + integration tests (testcontainers spawn own pg/minio)
         run: cargo nextest run --release --locked --no-fail-fast
 
+      # cargo-deny is the gating advisory check (it reads deny.toml waivers);
+      # cargo-audit is redundant + soft-failing under `|| true` so it adds no
+      # signal — dropped to cut install + run time.
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-audit,cargo-deny,cargo-machete
-      - name: cargo-audit
-        run: cargo audit --deny warnings || true
+          tool: cargo-deny,cargo-machete
       - name: cargo-deny
         run: cargo deny check --config deny.toml
       - name: cargo-machete (unused deps)
