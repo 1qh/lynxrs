@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from '@lynx-js/react'
+import { useCallback, useState } from '@lynx-js/react'
 import { api } from '../api/client.js'
 import { useAuth } from '../state/auth.js'
+import { useEvents } from '../lib/useEvents.js'
 import { AdminPanel } from './panels/AdminPanel.js'
 import { FilesPanel } from './panels/FilesPanel.js'
 import { ProfilePanel } from './panels/ProfilePanel.js'
@@ -15,22 +16,9 @@ export function Home() {
   const setUser = useAuth((s) => s.setUser)
   const [refreshKey, setRefreshKey] = useState(0)
 
-  useEffect(() => {
-    const base = (import.meta.env?.PUBLIC_API_BASE as string | undefined) ?? 'http://localhost:8088'
-    const wsUrl = base.replace(/^http/, 'ws') + '/events/ws'
-    let ws: WebSocket | null = null
-    try { ws = new WebSocket(wsUrl) } catch { return }
-    if (!ws) return
-    ws.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(String(ev.data)) as { kind?: string }
-        if (msg.kind === 'file_created' || msg.kind === 'file_deleted') {
-          setRefreshKey((k) => k + 1)
-        }
-      } catch {}
-    }
-    return () => { try { ws?.close() } catch {} }
-  }, [])
+  useEvents(['file_created', 'file_deleted'], () => {
+    setRefreshKey((k) => k + 1)
+  })
 
   const logout = useCallback(async () => {
     await api.POST('/auth/logout', {})
