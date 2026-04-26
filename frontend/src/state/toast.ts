@@ -10,10 +10,16 @@ interface ToastState {
 
 let nextId = 1
 
-export const useToasts = create<ToastState>((set) => ({
+const AUTO_DISMISS_MS = 5_000
+
+export const useToasts = create<ToastState>((set, get) => ({
   toasts: [],
-  push: (kind, text) =>
-    set((s) => ({ toasts: [...s.toasts, { id: nextId++, kind, text }] })),
+  push: (kind, text) => {
+    const id = nextId++
+    set((s) => ({ toasts: [...s.toasts, { id, kind, text }] }))
+    const t = (globalThis as { setTimeout?: (f: () => void, ms: number) => unknown }).setTimeout
+    if (t) t(() => get().dismiss(id), AUTO_DISMISS_MS)
+  },
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }))
 
