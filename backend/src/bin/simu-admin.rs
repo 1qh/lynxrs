@@ -86,7 +86,15 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 use totp_rs::{Algorithm, Secret, TOTP};
                 let bytes = Secret::generate_secret().to_bytes()?;
-                let totp = TOTP::new(Algorithm::SHA1, 6, 1, 30, bytes.clone(), Some("simu".into()), email_norm.clone())?;
+                let totp = TOTP::new(
+                    Algorithm::SHA1,
+                    6,
+                    1,
+                    30,
+                    bytes.clone(),
+                    Some("simu".into()),
+                    email_norm.clone(),
+                )?;
                 let b32 = Secret::Raw(bytes).to_encoded().to_string();
                 println!("MFA secret (scan into Authenticator app, store securely):");
                 println!("  {b32}");
