@@ -18,6 +18,11 @@ async function waitForText(page: Page, text: string, timeoutMs = 20_000) {
     .toBe(true)
 }
 
+// Visual regression tests use platform-specific snapshots (font rendering
+// differs Linux↔macOS). Skip when off-platform.
+const VISUAL_PLATFORM = process.env.SIMU_VISUAL_PLATFORM ?? 'darwin'
+test.skip(process.platform !== VISUAL_PLATFORM, `visual snapshots only valid on ${VISUAL_PLATFORM}`)
+
 test('visual regression: boot landing', async ({ page }) => {
   await page.goto(PREVIEW, { waitUntil: 'networkidle' })
 
