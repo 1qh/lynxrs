@@ -58,15 +58,18 @@ pub async fn run_once(
         .filter(file_object::Column::DeletedAt.lt(cutoff))
         .all(db)
         .await?;
+    // DB first; storage delete best-effort. Orphan in storage is reclaimable
+    // by the sweep below; orphan in DB is invisible to the app.
     let mut purged = 0u64;
     for r in old {
-        let p = object_store::path::Path::from(r.storage_key.clone());
-        let _ = storage.delete(&p).await;
         if file_object::Entity::delete_by_id(r.id)
             .exec(db)
             .await
             .is_ok()
         {
+            let _ = storage
+                .delete(&object_store::path::Path::from(r.storage_key))
+                .await;
             purged += 1;
         }
     }
@@ -121,11 +124,16 @@ pub async fn run_once(
     let mut orphans_deleted: u64 = 0;
     {
         use futures::StreamExt;
+        use sea_orm::QuerySelect;
+        // Project only the storage_key column — full file_object scan would
+        // pull every row into memory just to discard everything else.
         let known: std::collections::HashSet<String> = file_object::Entity::find()
+            .select_only()
+            .column(file_object::Column::StorageKey)
+            .into_tuple::<String>()
             .all(db)
             .await?
             .into_iter()
-            .map(|r| r.storage_key)
             .collect();
         // Walk both personal (u/) and org-scoped (o/) prefixes.
         let prefixes = [
