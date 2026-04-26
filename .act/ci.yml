@@ -165,12 +165,16 @@ jobs:
         run: bun run openapi:codegen
       - name: launch frontend dev server
         working-directory: frontend
+        env:
+          # Force chokidar (rspeedy's watcher) to poll instead of inotify.
+          # Inside colima/act the kernel inotify watch budget is too small
+          # for rspeedy's deep node_modules walk → EMFILE on `fs.watch`.
+          CHOKIDAR_USEPOLLING: "1"
+          CHOKIDAR_INTERVAL: "1000"
         run: |
           # setsid + </dev/null fully detaches so the dev server survives
           # the end of this step's shell (act container reuses the shell
           # parent in a way that kills bare `&` jobs).
-          # ulimit: rspeedy's file watcher walks deep node_modules; the
-          # default 1024 nofile in the act container hits EMFILE.
           ulimit -n 65535 || true
           setsid bash -c 'ulimit -n 65535; bun run dev > /tmp/frontend.log 2>&1' </dev/null &
           disown || true
