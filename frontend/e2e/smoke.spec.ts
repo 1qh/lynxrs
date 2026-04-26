@@ -86,7 +86,7 @@ test('boot → signup → upload → logout → relogin', async ({ page }) => {
 
   await waitForText(page, `Hello ${email}`, 15_000)
 
-  await tapText(page, 'Upload sample file')
+  await tapText(page, 'Upload sample text')
   await waitForText(page, 'note-', 10_000)
 
   await tapText(page, 'Log out')
