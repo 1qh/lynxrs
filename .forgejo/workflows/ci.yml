@@ -132,6 +132,12 @@ jobs:
           MAIL_FROM: "noreply@simu.local"
           PUBLIC_BASE_URL: "http://127.0.0.1:3000"
           RUST_LOG: "info,simu_backend=debug"
+          # E2E specs hit endpoints in tight loops; production-grade RL would
+          # trip 429s. Crank limits up so the suite measures correctness, not
+          # rate-limiter behavior (covered by full_governor in unit tests).
+          RATE_LIMIT_RPS: "10000"
+          RATE_LIMIT_BURST: "10000"
+          REQUIRE_ADMIN_MFA: "0"
         run: |
           ./target/release/simu-backend > /tmp/simu-backend.log 2>&1 &
           BPID=$!
