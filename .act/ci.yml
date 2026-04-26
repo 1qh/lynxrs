@@ -165,7 +165,11 @@ jobs:
       - name: launch frontend dev server
         working-directory: frontend
         run: |
-          bun run dev > /tmp/frontend.log 2>&1 &
+          # setsid + </dev/null fully detaches so the dev server survives
+          # the end of this step's shell (act container reuses the shell
+          # parent in a way that kills bare `&` jobs).
+          setsid bash -c 'bun run dev > /tmp/frontend.log 2>&1' </dev/null &
+          disown || true
           for i in $(seq 1 60); do
             # rspeedy may return 404 on / but 200 on /main.web.bundle.
             # -f only fails on 4xx/5xx, so check a known-good path.
