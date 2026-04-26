@@ -8,9 +8,9 @@ use std::sync::Arc;
 
 use axum::{Json, Router, http::HeaderName, routing::get};
 
+use axum_prometheus::PrometheusMetricLayerBuilder;
 use builtin::{api_docs_html, health, not_found, ready, version};
 use middleware::{inject_request_id_into_errors, security_headers};
-use axum_prometheus::PrometheusMetricLayerBuilder;
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::{
     compression::CompressionLayer,
@@ -119,7 +119,6 @@ impl Default for BuildOpts {
         }
     }
 }
-
 
 pub fn build(state: AppState, opts: BuildOpts) -> Router {
     let (api_router, openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())

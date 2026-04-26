@@ -35,7 +35,9 @@ pub async fn inject_request_id_into_errors(
     };
     let mut val: serde_json::Value = match serde_json::from_slice(&bytes) {
         Ok(v) => v,
-        Err(_) => return axum::response::Response::from_parts(parts, axum::body::Body::from(bytes)),
+        Err(_) => {
+            return axum::response::Response::from_parts(parts, axum::body::Body::from(bytes));
+        }
     };
     if let (Some(obj), Some(id)) = (val.as_object_mut(), req_id) {
         obj.entry("request_id")
@@ -98,4 +100,3 @@ pub async fn security_headers(
     );
     res
 }
-
