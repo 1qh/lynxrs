@@ -76,13 +76,14 @@ pub async fn bulk(
                 if r.owner_id != uid {
                     continue;
                 }
-                let p = ObjPath::from(r.storage_key.clone());
-                let _ = state.storage.delete(&p).await;
+                // DB first; storage delete best-effort (orphan reclaimable
+                // by housekeeping). Same reasoning as `trash::purge`.
                 if file_object::Entity::delete_by_id(r.id)
                     .exec(&state.db)
                     .await
                     .is_ok()
                 {
+                    let _ = state.storage.delete(&ObjPath::from(r.storage_key)).await;
                     n += 1;
                 }
             }
