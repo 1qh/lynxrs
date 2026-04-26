@@ -4,36 +4,25 @@ import { newApi } from './_api'
 const BACKEND = 'http://localhost:8088'
 
 test('websocket receives FileCreated broadcast after upload', async ({ browser }) => {
-  const api = await newApi()
+  // Sign up FROM the browser context so the session cookie ends up in the
+  // browser's cookie jar — then a same-origin WebSocket upgrade carries it.
+  const ctx = await browser.newContext()
+  const page = await ctx.newPage()
   const email = `ws-${Date.now()}@example.com`
   const password = 'hunter2hunter2'
-
-  const signup = await api.post('/api/auth/signup', {
+  // Use page.request — its cookies live in the BrowserContext, so a
+  // subsequent same-origin WebSocket carries them.
+  const signup = await page.request.post(`${BACKEND}/api/auth/signup`, {
     data: { email, password },
     headers: { 'content-type': 'application/json' },
   })
   expect(signup.ok()).toBe(true)
-
-  const state = await api.storageState()
-  const sessionCookie = state.cookies.find((c) => c.name === 'simu_session')
-  expect(sessionCookie).toBeTruthy()
-
-  // Give the browser page the session cookie so WS upgrade carries it.
-  const ctx = await browser.newContext()
-  await ctx.addCookies([
-    {
-      name: 'simu_session',
-      value: sessionCookie!.value,
-      domain: 'localhost',
-      path: '/',
-      httpOnly: true,
-      secure: false,
-      sameSite: 'Lax',
-    },
-  ])
-  const page = await ctx.newPage()
-  // Navigate once so WebSocket opens from a http://localhost origin.
-  await page.goto(`${BACKEND}/health`)
+  const csrf = ((await signup.json()) as { csrf_token?: string }).csrf_token ?? ''
+  expect(csrf).toBeTruthy()
+  // Park on the frontend dev server so the page origin matches site=localhost
+  // (cookies default sameSite=Lax → only sent on same-site navigations).
+  // Just need the page to be live; we'll use page.evaluate for fetch+ws.
+  await page.goto('http://localhost:3000/main.web.bundle')
 
   const wsUrl = 'ws://localhost:8088/events/ws'
   const received = page.evaluate((wsUrl: string) => {
@@ -52,17 +41,18 @@ test('websocket receives FileCreated broadcast after upload', async ({ browser }
     })
   }, wsUrl)
 
-  // Wait for WS to connect (we'll see ping on connect) then upload.
+  // Wait for WS to connect (we'll see ping on connect) then upload from the
+  // same browser context so the cookie jar carries the session.
   await page.waitForTimeout(800)
-  const up = await api.post('/api/files/json', {
+  const up = await page.request.post(`${BACKEND}/api/files/json`, {
     data: {
       filename: 'ws-note.txt',
       content_type: 'text/plain',
       data_base64: Buffer.from('hello ws').toString('base64'),
     },
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-csrf-token': csrf },
   })
-  expect(up.ok()).toBe(true)
+  expect(up.status()).toBe(201)
 
   const msgs = await received
   await ctx.close()
