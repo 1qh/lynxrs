@@ -59,12 +59,12 @@ test('tab nav switches panel and survives reload via hash', async ({ browser }) 
   const page = await ctx.newPage()
   await page.goto(PREVIEW, { waitUntil: 'networkidle' })
 
-  // Default tab is Files — search filter input is its tell.
-  await waitForText(page, 'filter files by name', 15_000)
+  // Default tab is Files — its "Upload sample text" button is the tell.
+  await waitForText(page, 'Upload sample text', 15_000)
 
-  // Switch to Profile tab; "display_name:" appears only there.
+  // Switch to Profile tab; "Save profile" button appears only there.
   await tapText(page, 'Profile')
-  await waitForText(page, 'display_name', 10_000)
+  await waitForText(page, 'Save profile', 10_000)
 
   // URL hash must reflect the active tab so it's deep-linkable.
   const hash = await page.evaluate(() => window.location.hash)
@@ -72,7 +72,7 @@ test('tab nav switches panel and survives reload via hash', async ({ browser }) 
 
   // Reload — tab should restore from the hash.
   await page.reload({ waitUntil: 'networkidle' })
-  await waitForText(page, 'display_name', 15_000)
+  await waitForText(page, 'Save profile', 15_000)
 
   await ctx.close()
 })
