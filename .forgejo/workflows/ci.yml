@@ -72,10 +72,6 @@ jobs:
     name: Playwright E2E
     runs-on: ubuntu-latest
     needs: [backend, frontend]
-    # E2E suite requires the full live stack (rspeedy server + backend + nats +
-    # mailpit + minio) and currently has spec-by-spec assumptions about route
-    # readiness. Treat as informational while we stabilize each spec.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
