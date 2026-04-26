@@ -115,6 +115,19 @@ pub fn issue_cookie_public(uid: Uuid, v: i32) -> Cookie<'static> {
     issue_cookie(uid, v)
 }
 
+/// Whether to issue cookies with the `Secure` attribute. Driven by the
+/// `COOKIE_SECURE` env var (true/false), or — if unset — inferred from
+/// `PUBLIC_BASE_URL` starting with `https://`. Defaults to `false` so the
+/// dev/test loop on plain HTTP keeps working.
+fn cookie_secure() -> bool {
+    if let Ok(v) = std::env::var("COOKIE_SECURE") {
+        return matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on");
+    }
+    std::env::var("PUBLIC_BASE_URL")
+        .map(|u| u.starts_with("https://"))
+        .unwrap_or(false)
+}
+
 async fn hash_password(password: String) -> Result<String> {
     let started = std::time::Instant::now();
     let r = tokio::task::spawn_blocking(move || {
@@ -147,7 +160,7 @@ fn issue_cookie(user_id: Uuid, session_version: i32) -> Cookie<'static> {
     Cookie::build((SESSION_COOKIE, value))
         .http_only(true)
         .same_site(SameSite::Lax)
-        .secure(false) // TODO: true under HTTPS in prod
+        .secure(cookie_secure())
         .path("/")
         .max_age(time::Duration::days(SESSION_TTL_DAYS))
         .build()
@@ -731,7 +744,7 @@ pub fn issue_csrf_pair() -> (String, Cookie<'static>) {
     let c = Cookie::build((CSRF_COOKIE, v.clone()))
         .http_only(false)
         .same_site(SameSite::Lax)
-        .secure(false)
+        .secure(cookie_secure())
         .path("/")
         .max_age(time::Duration::days(30))
         .build();
