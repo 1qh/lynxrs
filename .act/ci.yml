@@ -261,10 +261,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: install gitleaks
+        run: |
+          arch=$(uname -m)
+          case "$arch" in
+            x86_64) suffix=linux_x64 ;;
+            aarch64|arm64) suffix=linux_arm64 ;;
+            *) echo "unsupported arch: $arch"; exit 1 ;;
+          esac
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_${suffix}.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
       - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITLEAKS_CONFIG: .gitleaks.toml
+        run: gitleaks detect --config=.gitleaks.toml --no-git --redact --exit-code 1 .
       - name: trivy fs
         uses: aquasecurity/trivy-action@master
         with:
