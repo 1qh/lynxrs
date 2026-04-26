@@ -159,8 +159,11 @@ pub async fn download_share(
         return Err(AppError::BadRequest("share expired".into()));
     }
     if let Some(expected) = share.password_hash.as_deref() {
+        // Constant-time compare: a variable-time `!=` on hex strings leaks
+        // the matching prefix length, enabling a 1-byte-at-a-time guess.
+        use subtle::ConstantTimeEq;
         let provided = dq.password.as_deref().map(sha256_hex).unwrap_or_default();
-        if provided != expected {
+        if provided.as_bytes().ct_eq(expected.as_bytes()).unwrap_u8() == 0 {
             return Err(AppError::Unauthorized);
         }
     }
