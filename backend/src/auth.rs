@@ -311,7 +311,7 @@ pub async fn verify_email(
     if row.used_at.is_some() {
         return Err(AppError::BadRequest("token already used".into()));
     }
-    if row.expires_at == /* ~ changed by cargo-mutants ~ */ chrono::Utc::now() {
+    if row.expires_at < chrono::Utc::now() {
         return Err(AppError::BadRequest("token expired".into()));
     }
 
