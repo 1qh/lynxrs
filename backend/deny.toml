@@ -5,8 +5,6 @@ targets = []
 version = 2
 yanked = "deny"
 ignore = [
-  # tokio-tar via testcontainers (dev-dependency only, never ships to prod).
-  { id = "RUSTSEC-2025-0111", reason = "dev-only via testcontainers, not in prod image" },
   # paste unmaintained
   { id = "RUSTSEC-2024-0436", reason = "paste unmaintained; no CVE; pervasive transitive" },
   # rustls-pemfile unmaintained
