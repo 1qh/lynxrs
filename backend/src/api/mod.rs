@@ -11,7 +11,9 @@ use axum::{Json, Router, http::HeaderName, routing::get};
 use axum_prometheus::PrometheusMetricLayerBuilder;
 use builtin::{api_docs_html, health, not_found, ready, version};
 use middleware::{inject_request_id_into_errors, security_headers};
-use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
+use tower_governor::{
+    GovernorLayer, governor::GovernorConfigBuilder, key_extractor::SmartIpKeyExtractor,
+};
 use tower_http::{
     compression::CompressionLayer,
     cors::{AllowOrigin, CorsLayer},
@@ -226,10 +228,14 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         ]);
 
     if opts.production_layers {
+        // SmartIpKeyExtractor reads X-Forwarded-For / X-Real-IP first so
+        // running behind a reverse proxy doesn't collapse every client
+        // onto the proxy's loopback IP.
         let governor_conf = Arc::new(
             GovernorConfigBuilder::default()
                 .per_second(opts.rate_limit_rps)
                 .burst_size(opts.rate_limit_burst)
+                .key_extractor(SmartIpKeyExtractor)
                 .finish()
                 .expect("governor config"),
         );
