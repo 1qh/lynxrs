@@ -56,10 +56,12 @@ pub async fn record(
         .and_then(|h| h.get(axum::http::header::USER_AGENT))
         .and_then(|v| v.to_str().ok())
         .map(String::from);
-    let id = Uuid::now_v7();
-    let created_at = chrono::Utc::now();
-
     // Tx + xact advisory lock serializes chain growth under concurrent writes.
+    // id + created_at are generated INSIDE the lock so the chain order
+    // (verified by `order_by_asc(created_at, id)`) cannot disagree with the
+    // insertion order. If we generated them outside, two concurrent writers
+    // could end up with non-monotonic created_at relative to their lock
+    // acquisition order, breaking verification.
     let res = async {
         let tx = db.begin().await?;
         tx.execute(Statement::from_string(
@@ -67,6 +69,8 @@ pub async fn record(
             "SELECT pg_advisory_xact_lock(4242424242)".to_string(),
         ))
         .await?;
+        let id = Uuid::now_v7();
+        let created_at = chrono::Utc::now();
         let prev = audit_event::Entity::find()
             .order_by_desc(audit_event::Column::CreatedAt)
             .order_by_desc(audit_event::Column::Id)
