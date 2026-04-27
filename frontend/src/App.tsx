@@ -4,6 +4,7 @@ import { useAuth, type User } from './state/auth.js'
 import { AuthForm } from './screens/Auth.js'
 import { Home } from './screens/Home.js'
 import { Toasts } from './screens/Toasts.js'
+import { CrossRouter } from './lib/Router.js'
 import './App.css'
 
 export function App() {
@@ -28,12 +29,14 @@ export function App() {
   }
 
   return (
-    <view className="Screen">
-      <view className="Frame">
-        <text className="Title">simu</text>
-        {user ? <Home /> : <AuthForm />}
+    <CrossRouter>
+      <view className="Screen">
+        <view className="Frame">
+          <text className="Title">simu</text>
+          {user ? <Home /> : <AuthForm />}
+        </view>
+        <Toasts />
       </view>
-      <Toasts />
-    </view>
+    </CrossRouter>
   )
 }

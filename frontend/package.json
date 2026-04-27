@@ -19,6 +19,8 @@
     "@lynx-js/web-elements": "latest",
     "@tanstack/react-query": "latest",
     "openapi-fetch": "latest",
+    "react-router": "^6.30",
+    "react-router-dom": "^6.30",
     "zod": "latest",
     "zustand": "latest"
   },
