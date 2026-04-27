@@ -9,23 +9,68 @@ type FileDto = components['schemas']['FileDto']
 export function FilesPanel({ refreshKey }: { refreshKey: number }) {
   const { t } = useTranslation()
   const [files, setFiles] = useState<FileDto[]>([])
+  const [cursor, setCursor] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [starred, setStarred] = useState<FileDto[]>([])
   const [descEdit, setDescEdit] = useState<{ id: string; text: string } | null>(null)
   const [query, setQuery] = useState('')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const { data, error } = await api.GET('/files', { params: { query: {} } })
+      const { data, error } = await api.GET('/files', { params: { query: { limit: 50 } } })
       if (error) reportError(error, 'Load files failed')
-      if (data) setFiles((data as { items: FileDto[] }).items ?? [])
+      if (data) {
+        const d = data as { items: FileDto[]; next_cursor?: string | null }
+        setFiles(d.items ?? [])
+        setCursor(d.next_cursor ?? null)
+      }
     } finally {
       setLoading(false)
     }
   }, [])
+
+  const loadMore = useCallback(async () => {
+    if (!cursor || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const { data, error } = await api.GET('/files', {
+        params: { query: { limit: 50, cursor } },
+      })
+      if (error) reportError(error, 'Load more failed')
+      if (data) {
+        const d = data as { items: FileDto[]; next_cursor?: string | null }
+        setFiles((cur) => [...cur, ...(d.items ?? [])])
+        setCursor(d.next_cursor ?? null)
+      }
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [cursor, loadingMore])
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelected((cur) => {
+      const next = new Set(cur)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const clearSelection = useCallback(() => setSelected(new Set()), [])
+
+  const bulkDelete = useCallback(async () => {
+    const ids = Array.from(selected)
+    if (ids.length === 0) return
+    const { error } = await api.POST('/files/bulk', { body: { action: 'delete', ids } })
+    if (error) reportError(error, 'Bulk delete failed')
+    clearSelection()
+    void refresh()
+  }, [selected, clearSelection, refresh])
 
   useEffect(() => { void refresh() }, [refresh, refreshKey])
 
@@ -167,44 +212,99 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
         type="text"
         bindinput={(e: { detail: { value: string } }) => setQuery(e.detail.value)}
       />
+      {selected.size > 0 ? (
+        <view className="flex-row items-center gap-2 rounded-md bg-secondary border border-border px-3 py-2">
+          <text className="flex-1 text-secondary-foreground text-sm">
+            {selected.size} selected
+          </text>
+          <view
+            className="h-8 rounded-md bg-background border border-input items-center justify-center px-3"
+            bindtap={clearSelection}
+          >
+            <text className="text-foreground text-sm">clear</text>
+          </view>
+          <view
+            className="h-8 rounded-md bg-destructive items-center justify-center px-3"
+            bindtap={() => void bulkDelete()}
+          >
+            <text className="text-destructive-foreground text-sm font-medium">delete</text>
+          </view>
+        </view>
+      ) : null}
       <view className="gap-2">
         {loading ? (
           <text className="text-sm text-muted-foreground">{t('files.loading')}</text>
         ) : filtered.length === 0 ? (
           <text className="text-sm text-muted-foreground">{t('files.no_files')}</text>
         ) : (
-          filtered.map((f) => (
-            <view key={f.id} className="rounded-md bg-card border border-border p-3 gap-2">
-              <text
-                className="text-foreground text-sm font-medium"
-                bindtap={() => void share(f.id)}
+          filtered.map((f) => {
+            const isSelected = selected.has(f.id)
+            return (
+              <view
+                key={f.id}
+                className={
+                  isSelected
+                    ? 'rounded-md bg-secondary border border-primary p-3 gap-2'
+                    : 'rounded-md bg-card border border-border p-3 gap-2'
+                }
               >
-                {f.filename}
-              </text>
-              <text className="text-xs text-muted-foreground">
-                {f.size_bytes}B · {f.content_type}
-              </text>
-              {f.description ? (
-                <text className="text-sm text-muted-foreground">{f.description}</text>
-              ) : null}
-              <view className="flex-row gap-2">
-                <view
-                  className="h-8 rounded-md bg-background border border-input items-center justify-center px-3"
-                  bindtap={() => void toggleStar(f.id)}
-                >
-                  <text className="text-foreground text-sm">⭐</text>
+                <view className="flex-row items-start gap-2">
+                  <view
+                    className={
+                      isSelected
+                        ? 'w-5 h-5 rounded bg-primary border border-primary items-center justify-center'
+                        : 'w-5 h-5 rounded bg-background border border-input items-center justify-center'
+                    }
+                    bindtap={() => toggleSelect(f.id)}
+                  >
+                    {isSelected ? (
+                      <text className="text-primary-foreground text-xs">✓</text>
+                    ) : null}
+                  </view>
+                  <view className="flex-1 gap-1">
+                    <text
+                      className="text-foreground text-sm font-medium"
+                      bindtap={() => void share(f.id)}
+                    >
+                      {f.filename}
+                    </text>
+                    <text className="text-xs text-muted-foreground">
+                      {f.size_bytes}B · {f.content_type}
+                    </text>
+                    {f.description ? (
+                      <text className="text-sm text-muted-foreground">{f.description}</text>
+                    ) : null}
+                  </view>
                 </view>
-                <view
-                  className="h-8 rounded-md bg-background border border-input items-center justify-center px-3"
-                  bindtap={() => setDescEdit({ id: f.id, text: f.description ?? '' })}
-                >
-                  <text className="text-foreground text-sm">{t('files.describe')}</text>
+                <view className="flex-row gap-2">
+                  <view
+                    className="h-8 rounded-md bg-background border border-input items-center justify-center px-3"
+                    bindtap={() => void toggleStar(f.id)}
+                  >
+                    <text className="text-foreground text-sm">⭐</text>
+                  </view>
+                  <view
+                    className="h-8 rounded-md bg-background border border-input items-center justify-center px-3"
+                    bindtap={() => setDescEdit({ id: f.id, text: f.description ?? '' })}
+                  >
+                    <text className="text-foreground text-sm">{t('files.describe')}</text>
+                  </view>
                 </view>
               </view>
-            </view>
-          ))
+            )
+          })
         )}
       </view>
+      {cursor ? (
+        <view
+          className="h-10 rounded-md bg-background border border-input items-center justify-center"
+          bindtap={loadingMore ? undefined : () => void loadMore()}
+        >
+          <text className="text-foreground text-sm font-medium">
+            {loadingMore ? t('files.loading') : 'Load more'}
+          </text>
+        </view>
+      ) : null}
       {shareUrl ? (
         <text className="text-sm text-muted-foreground">
           {t('files.share_label', { url: shareUrl })}
