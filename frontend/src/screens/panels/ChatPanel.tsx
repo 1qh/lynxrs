@@ -92,9 +92,101 @@ export function ChatPanel() {
     }
   }, [])
 
+  const handleSlash = useCallback(async (raw: string) => {
+    const cmd = raw.slice(1).trim().toLowerCase()
+    if (cmd === 'clear') { setMessages([]); return true }
+    if (cmd === 'export' && activeId) {
+      try {
+        const f = (globalThis as { fetch?: typeof fetch }).fetch
+        if (!f) return true
+        const r = await f(`${BASE}/api/conversations/${activeId}/export`, {
+          credentials: 'include',
+        })
+        if (!r.ok) return true
+        const d = (await r.json()) as { markdown: string }
+        const doc = (globalThis as { document?: Document }).document
+        if (doc) {
+          const blob = new Blob([d.markdown], { type: 'text/markdown' })
+          const a = doc.createElement('a')
+          a.href = URL.createObjectURL(blob)
+          a.download = `conversation-${activeId.slice(0, 8)}.md`
+          a.click()
+          URL.revokeObjectURL(a.href)
+        }
+      } catch (e) {
+        reportError(e, 'Export failed')
+      }
+      return true
+    }
+    if (cmd === 'help') {
+      setMessages((cur) => [
+        ...cur,
+        {
+          id: `slash-${Date.now()}`,
+          role: 'assistant',
+          content: 'Slash commands:\n  /clear — clear visible messages\n  /export — download as markdown\n  /help — this help',
+          created_at: new Date().toISOString(),
+        },
+      ])
+      return true
+    }
+    return false
+  }, [activeId])
+
+  const renameConversation = useCallback(async (id: string) => {
+    const w = globalThis as { prompt?: (msg: string, def?: string) => string | null }
+    if (!w.prompt) return
+    const cur = convs.find((c) => c.id === id)
+    const next = w.prompt('Conversation title', cur?.title ?? '')
+    if (next == null) return
+    try {
+      const f = (globalThis as { fetch?: typeof fetch }).fetch
+      if (!f) return
+      const headers = await csrfHeaders()
+      await f(`${BASE}/api/conversations/${id}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({ title: next }),
+      })
+      void refreshConvs()
+    } catch (e) {
+      reportError(e, 'Rename failed')
+    }
+  }, [convs, refreshConvs])
+
+  const deleteConversation = useCallback(async (id: string) => {
+    const w = globalThis as { confirm?: (msg: string) => boolean }
+    if (w.confirm && !w.confirm('Delete this conversation?')) return
+    try {
+      const f = (globalThis as { fetch?: typeof fetch }).fetch
+      if (!f) return
+      const headers = await csrfHeaders()
+      await f(`${BASE}/api/conversations/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers,
+      })
+      if (activeId === id) {
+        setActiveId(null)
+        setMessages([])
+      }
+      void refreshConvs()
+    } catch (e) {
+      reportError(e, 'Delete failed')
+    }
+  }, [activeId, refreshConvs])
+
   const send = useCallback(async (overrideText?: string) => {
     const text = (overrideText ?? inputRef.current).trim()
     if (!text || !activeId || streaming) return
+    if (text.startsWith('/')) {
+      const handled = await handleSlash(text)
+      if (handled) {
+        inputRef.current = ''
+        return
+      }
+    }
     lastUserContentRef.current = text
     setStreaming(true)
     inputRef.current = ''
@@ -191,15 +283,35 @@ export function ChatPanel() {
             key={c.id}
             className={
               activeId === c.id
-                ? 'h-8 rounded-md bg-secondary border border-primary items-center justify-center px-3'
-                : 'h-8 rounded-md bg-secondary items-center justify-center px-3'
+                ? 'h-8 rounded-md bg-secondary border border-primary items-center px-2 flex-row gap-1'
+                : 'h-8 rounded-md bg-secondary items-center px-2 flex-row gap-1'
             }
-            bindtap={() => setActiveId(c.id)}
             aria-label={c.title || 'Untitled'}
           >
-            <text className="text-secondary-foreground text-sm">
+            <text
+              className="text-secondary-foreground text-sm"
+              bindtap={() => setActiveId(c.id)}
+            >
               {c.title || c.id.slice(0, 8)}
             </text>
+            {activeId === c.id ? (
+              <>
+                <text
+                  className="text-muted-foreground text-xs px-1"
+                  bindtap={() => void renameConversation(c.id)}
+                  aria-label={t('chat.rename')}
+                >
+                  ✎
+                </text>
+                <text
+                  className="text-destructive text-xs px-1"
+                  bindtap={() => void deleteConversation(c.id)}
+                  aria-label={t('chat.delete')}
+                >
+                  ✕
+                </text>
+              </>
+            ) : null}
           </view>
         ))}
       </view>

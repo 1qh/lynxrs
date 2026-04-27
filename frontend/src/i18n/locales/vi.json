@@ -42,7 +42,9 @@
     "send": "Gửi",
     "stop": "Dừng",
     "regenerate": "Tạo lại",
-    "tokens": "tokens"
+    "tokens": "tokens",
+    "rename": "Đổi tên",
+    "delete": "Xóa"
   },
   "settings": {
     "profile": "Hồ sơ",

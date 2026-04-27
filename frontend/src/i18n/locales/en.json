@@ -42,7 +42,9 @@
     "send": "Send",
     "stop": "Stop",
     "regenerate": "Regenerate",
-    "tokens": "tokens"
+    "tokens": "tokens",
+    "rename": "Rename",
+    "delete": "Delete"
   },
   "settings": {
     "profile": "Profile",
