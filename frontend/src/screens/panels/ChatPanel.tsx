@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from '@lynx-js/react'
 import { useTranslation } from 'react-i18next'
 import { reportError } from '../../state/toast.js'
 import { useEvents } from '../../lib/useEvents.js'
+import { LynxMarkdown } from '../../lib/lynxMarkdown.js'
 
 type Message = {
   id: string
@@ -535,9 +536,11 @@ export function ChatPanel() {
               }
             >
               {m.role === 'assistant' ? (
-                <text className="text-foreground text-sm whitespace-pre-wrap">
-                  {m.content || (streaming ? '…' : '')}
-                </text>
+                m.content ? (
+                  <LynxMarkdown source={m.content} />
+                ) : (
+                  <text className="text-foreground text-sm">{streaming ? '…' : ''}</text>
+                )
               ) : (
                 <text
                   className="text-primary-foreground text-sm whitespace-pre-wrap"
