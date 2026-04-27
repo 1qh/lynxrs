@@ -22,6 +22,96 @@ import { AuditPanel } from './panels/AuditPanel.js'
 
 type TabSpec = { path: string; labelKey: string; adminOnly?: boolean }
 
+function TabBar({
+  tabs,
+  active,
+  onPick,
+}: {
+  tabs: ReadonlyArray<TabSpec>
+  active: string
+  onPick: (p: string) => void
+}) {
+  const { t } = useTranslation()
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const activeTab = tabs.find((tb) => active.startsWith(tb.path)) ?? tabs[0]!
+  return (
+    <>
+      {/* >= sm: horizontal tab bar */}
+      <view className="hidden sm:flex flex-row flex-wrap gap-1 py-2 border-b border-border">
+        {tabs.map((tb) => {
+          const a = active.startsWith(tb.path)
+          return (
+            <view
+              key={tb.path}
+              className={
+                a
+                  ? 'rounded-md px-3 py-1.5 bg-primary'
+                  : 'rounded-md px-3 py-1.5 bg-transparent'
+              }
+              bindtap={() => onPick(tb.path)}
+              aria-label={t(tb.labelKey)}
+            >
+              <text
+                className={
+                  a
+                    ? 'text-primary-foreground text-sm font-medium'
+                    : 'text-muted-foreground text-sm font-medium'
+                }
+              >
+                {t(tb.labelKey)}
+              </text>
+            </view>
+          )
+        })}
+      </view>
+      {/* < sm: drawer trigger + drawer */}
+      <view className="flex sm:hidden flex-row items-center justify-between py-2 border-b border-border">
+        <view
+          className="h-9 rounded-md bg-secondary border border-border items-center justify-center px-3"
+          bindtap={() => setDrawerOpen(true)}
+          aria-label="open menu"
+        >
+          <text className="text-secondary-foreground text-sm font-medium">☰ {t(activeTab.labelKey)}</text>
+        </view>
+      </view>
+      {drawerOpen ? (
+        <view
+          className="fixed inset-0 bg-background/80 z-[8500]"
+          bindtap={() => setDrawerOpen(false)}
+        >
+          <view className="absolute left-0 top-0 bottom-0 w-[260px] bg-card border-r border-border p-4 gap-1">
+            {tabs.map((tb) => {
+              const a = active.startsWith(tb.path)
+              return (
+                <view
+                  key={tb.path}
+                  className={
+                    a
+                      ? 'h-10 rounded-md bg-primary items-center justify-center px-3'
+                      : 'h-10 rounded-md bg-transparent items-center justify-center px-3'
+                  }
+                  bindtap={() => { onPick(tb.path); setDrawerOpen(false) }}
+                  aria-label={t(tb.labelKey)}
+                >
+                  <text
+                    className={
+                      a
+                        ? 'text-primary-foreground text-sm font-medium'
+                        : 'text-foreground text-sm font-medium'
+                    }
+                  >
+                    {t(tb.labelKey)}
+                  </text>
+                </view>
+              )
+            })}
+          </view>
+        </view>
+      ) : null}
+    </>
+  )
+}
+
 const TABS: ReadonlyArray<TabSpec> = [
   { path: '/files', labelKey: 'tabs.files' },
   { path: '/orgs', labelKey: 'tabs.orgs' },
@@ -87,33 +177,7 @@ function Layout() {
           </text>
         </view>
       ) : null}
-      <view className="flex-row flex-wrap gap-1 py-2 border-b border-border">
-        {visibleTabs.map((tb) => {
-          const active = loc.pathname.startsWith(tb.path)
-          return (
-            <view
-              key={tb.path}
-              className={
-                active
-                  ? 'rounded-md px-3 py-1.5 bg-primary'
-                  : 'rounded-md px-3 py-1.5 bg-transparent'
-              }
-              bindtap={() => navigate(tb.path)}
-              aria-label={t(tb.labelKey)}
-            >
-              <text
-                className={
-                  active
-                    ? 'text-primary-foreground text-sm font-medium'
-                    : 'text-muted-foreground text-sm font-medium'
-                }
-              >
-                {t(tb.labelKey)}
-              </text>
-            </view>
-          )
-        })}
-      </view>
+      <TabBar tabs={visibleTabs} active={loc.pathname} onPick={(p) => navigate(p)} />
       <view className="py-2 gap-3">
         <Outlet />
       </view>

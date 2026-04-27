@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from '@lynx-js/react'
 import { useTranslation } from 'react-i18next'
+import { useParams } from 'react-router-dom'
 import { api } from '../../api/client.js'
 import { reportError } from '../../state/toast.js'
 import { useOrgContext } from '../../state/orgContext.js'
@@ -10,6 +11,7 @@ type FileDto = components['schemas']['FileDto']
 export function FilesPanel({ refreshKey }: { refreshKey: number }) {
   const { t } = useTranslation()
   const activeOrgId = useOrgContext((s) => s.activeOrgId)
+  const { id: detailId } = useParams<{ id: string }>()
   const [files, setFiles] = useState<FileDto[]>([])
   const [cursor, setCursor] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -82,6 +84,14 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
   }, [selected, clearSelection, refresh])
 
   useEffect(() => { void refresh() }, [refresh, refreshKey])
+
+  // Deep-link /files/:id → auto-open the preview modal for that file once
+  // the list arrives (keeps a single source of truth for what's visible).
+  useEffect(() => {
+    if (!detailId || files.length === 0) return
+    const f = files.find((x) => x.id === detailId)
+    if (f) setPreview(f)
+  }, [detailId, files])
 
   const uploadSample = useCallback(async () => {
     setBusy(true)
@@ -388,17 +398,13 @@ function PreviewModal({ file, onClose }: { file: FileDto; onClose: () => void })
         {c.startsWith('image/') ? (
           <image src={url} className="rounded-md max-w-[80vw] max-h-[70vh]" />
         ) : c === 'application/pdf' ? (
-          <view className="w-[80vw] h-[70vh] rounded-md bg-background border border-border">
-            <text className="text-muted-foreground text-sm p-3">
-              PDF preview only renders on web target. URL: {url}
-            </text>
-          </view>
+          <NativeEmbed kind="iframe" url={url} className="w-[80vw] h-[70vh] rounded-md bg-background border border-border" />
         ) : c.startsWith('text/') ? (
           <TextPreview url={url} />
         ) : c.startsWith('audio/') ? (
-          <text className="text-muted-foreground text-sm">audio: {url}</text>
+          <NativeEmbed kind="audio" url={url} className="w-[80vw] rounded-md bg-background" />
         ) : c.startsWith('video/') ? (
-          <text className="text-muted-foreground text-sm">video: {url}</text>
+          <NativeEmbed kind="video" url={url} className="w-[80vw] max-h-[70vh] rounded-md bg-background" />
         ) : null}
         <view
           className="h-9 rounded-md bg-background border border-input items-center justify-center"
@@ -408,6 +414,53 @@ function PreviewModal({ file, onClose }: { file: FileDto; onClose: () => void })
           <text className="text-foreground text-sm font-medium">close</text>
         </view>
       </view>
+    </view>
+  )
+}
+
+/**
+ * Render a native HTML element (iframe/audio/video) by appending it directly
+ * to document.body with fixed positioning. Lynx custom elements aren't real
+ * DOM nodes that accept `<iframe>` as a child, so we sidestep the synthetic
+ * tree and overlay the embed at a fixed center-of-screen position.
+ */
+function NativeEmbed({
+  kind,
+  url,
+}: {
+  kind: 'iframe' | 'audio' | 'video'
+  url: string
+  className?: string
+}) {
+  useEffect(() => {
+    const doc = (globalThis as { document?: Document }).document
+    if (!doc) return
+    const el = doc.createElement(kind) as HTMLIFrameElement | HTMLAudioElement | HTMLVideoElement
+    if (kind === 'iframe') (el as HTMLIFrameElement).src = url
+    else {
+      ;(el as HTMLMediaElement).src = url
+      ;(el as HTMLMediaElement).controls = true
+    }
+    el.style.position = 'fixed'
+    el.style.left = '50%'
+    el.style.top = '50%'
+    el.style.transform = 'translate(-50%, -50%)'
+    el.style.width = '80vw'
+    el.style.maxHeight = '70vh'
+    el.style.border = '0'
+    el.style.borderRadius = '8px'
+    el.style.zIndex = '9100'
+    el.style.background = '#000'
+    doc.body.appendChild(el)
+    return () => {
+      try {
+        doc.body.removeChild(el)
+      } catch {}
+    }
+  }, [kind, url])
+  return (
+    <view className="w-[80vw] h-[70vh] rounded-md bg-background border border-border items-center justify-center">
+      <text className="text-muted-foreground text-sm">loading {kind}…</text>
     </view>
   )
 }
