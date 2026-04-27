@@ -1,8 +1,16 @@
 import { useCallback, useState } from '@lynx-js/react'
 import { useTranslation } from 'react-i18next'
-import { Routes, Route, Navigate, Outlet, useLocation, useNavigate, useOutletContext } from 'react-router-dom'
+import {
+  Routes,
+  Route,
+  Navigate,
+  Outlet,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom'
 import { api } from '../api/client.js'
 import { useAuth } from '../state/auth.js'
+import { useFilesState } from '../state/files.js'
 import { useEvents } from '../lib/useEvents.js'
 import { useKeyboardShortcuts } from '../lib/useKeyboardShortcuts.js'
 import { OrgContextSwitcher } from './OrgContextSwitcher.js'
@@ -30,13 +38,10 @@ function Layout() {
   const setUser = useAuth((s) => s.setUser)
   const loc = useLocation()
   const navigate = useNavigate()
-  const [refreshKey, setRefreshKey] = useState(0)
+  const bump = useFilesState((s) => s.bump)
 
-  useEvents(['file_created', 'file_deleted'], () => {
-    setRefreshKey((k) => k + 1)
-  })
+  useEvents(['file_created', 'file_deleted'], bump)
 
-  // g-prefix shortcuts: gf/go/gt/ga/gs/gd → tabs.
   const [gPrefix, setG] = useState(false)
   useKeyboardShortcuts([
     { key: 'g', handler: () => { setG(true); setTimeout(() => setG(false), 1500) } },
@@ -111,7 +116,7 @@ function Layout() {
         })}
       </view>
       <view className="py-2 gap-3">
-        <Outlet context={{ refreshKey, bumpFiles: () => setRefreshKey((k) => k + 1) }} />
+        <Outlet />
       </view>
       <view className="flex-row gap-2 pt-4 border-t border-border">
         <view
@@ -133,32 +138,31 @@ function Layout() {
   )
 }
 
+function FilesView() {
+  const refreshKey = useFilesState((s) => s.refreshKey)
+  return <FilesPanel refreshKey={refreshKey} />
+}
+
+function TrashView() {
+  const bump = useFilesState((s) => s.bump)
+  return <TrashPanel onRestore={bump} />
+}
+
 export function Home() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/" element={<Navigate to="/files" replace />} />
-        <Route path="/files" element={<FilesPanelRoute />} />
-        <Route path="/files/:id" element={<FilesPanelRoute />} />
-        <Route path="/orgs" element={<OrgsPanel />} />
-        <Route path="/orgs/:slug" element={<OrgsPanel />} />
-        <Route path="/trash" element={<TrashPanelRoute />} />
-        <Route path="/audit" element={<AuditPanel />} />
-        <Route path="/settings/*" element={<SettingsPanel />} />
-        <Route path="/admin" element={<AdminPanel />} />
+        <Route index element={<Navigate to="/files" replace />} />
+        <Route path="files" element={<FilesView />} />
+        <Route path="files/:id" element={<FilesView />} />
+        <Route path="orgs" element={<OrgsPanel />} />
+        <Route path="orgs/:slug" element={<OrgsPanel />} />
+        <Route path="trash" element={<TrashView />} />
+        <Route path="audit" element={<AuditPanel />} />
+        <Route path="settings/*" element={<SettingsPanel />} />
+        <Route path="admin" element={<AdminPanel />} />
         <Route path="*" element={<Navigate to="/files" replace />} />
       </Route>
     </Routes>
   )
-}
-
-function FilesPanelRoute() {
-  const ctx = useOutletContext<{ refreshKey?: number } | null>()
-  return <FilesPanel refreshKey={ctx?.refreshKey ?? 0} />
-}
-
-function TrashPanelRoute() {
-  const ctx = useOutletContext<{ bumpFiles?: () => void } | null>()
-  const onRestore = ctx?.bumpFiles
-  return onRestore ? <TrashPanel onRestore={onRestore} /> : <TrashPanel />
 }
