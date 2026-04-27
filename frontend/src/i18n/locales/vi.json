@@ -85,7 +85,8 @@
     "secret_once": "secret webhook (sao chép ngay, chỉ hiện một lần): {{secret}}"
   },
   "audit": {
-    "load": "Tải nhật ký kiểm toán"
+    "load": "Làm mới hoạt động",
+    "empty": "Chưa có hoạt động"
   },
   "mfa": {
     "enable": "Bật MFA (TOTP)",
@@ -103,5 +104,16 @@
   "lang": {
     "switch_to": "VI",
     "switch_back": "EN"
+  },
+  "shortcuts": {
+    "title": "Phím tắt",
+    "go_files": "Đến Tệp",
+    "go_orgs": "Đến Tổ chức",
+    "go_trash": "Đến Thùng rác",
+    "go_audit": "Đến Kiểm toán",
+    "go_settings": "Đến Cài đặt",
+    "go_admin": "Đến Quản trị",
+    "show_help": "Hiển thị trợ giúp",
+    "close": "Đóng"
   }
 }

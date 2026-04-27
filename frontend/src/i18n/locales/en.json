@@ -85,7 +85,8 @@
     "secret_once": "webhook secret (copy now, shown once): {{secret}}"
   },
   "audit": {
-    "load": "Load audit log"
+    "load": "Refresh activity",
+    "empty": "No activity yet"
   },
   "mfa": {
     "enable": "Enable MFA (TOTP)",
@@ -103,5 +104,16 @@
   "lang": {
     "switch_to": "VI",
     "switch_back": "EN"
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "go_files": "Go to Files",
+    "go_orgs": "Go to Orgs",
+    "go_trash": "Go to Trash",
+    "go_audit": "Go to Audit",
+    "go_settings": "Go to Settings",
+    "go_admin": "Go to Admin",
+    "show_help": "Show this help",
+    "close": "Close"
   }
 }
