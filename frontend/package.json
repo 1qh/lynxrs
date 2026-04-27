@@ -27,12 +27,16 @@
     "@lynx-js/qrcode-rsbuild-plugin": "latest",
     "@lynx-js/react-rsbuild-plugin": "latest",
     "@lynx-js/rspeedy": "latest",
+    "@lynx-js/tailwind-preset": "^0.4.0",
     "@lynx-js/types": "latest",
     "@playwright/test": "latest",
     "@rsbuild/plugin-type-check": "latest",
     "@types/react": "latest",
+    "autoprefixer": "^10.5.0",
     "openapi-typescript": "latest",
     "otpauth": "latest",
+    "postcss": "^8.5.12",
+    "tailwindcss": "^3.4",
     "typescript": "latest"
   },
   "packageManager": "bun@latest"
