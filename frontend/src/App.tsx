@@ -10,6 +10,7 @@ import { LangSwitcher } from './screens/LangSwitcher.js'
 import { ThemeSwitcher } from './screens/ThemeSwitcher.js'
 import { Logo } from './screens/Logo.js'
 import { ShortcutsHelp } from './screens/ShortcutsHelp.js'
+import { CommandPalette } from './screens/CommandPalette.js'
 import './i18n/index.js'
 import './state/theme.js'
 import './App.css'
@@ -62,6 +63,7 @@ export function App() {
         </view>
         <Toasts />
         <ShortcutsHelp />
+        <CommandPalette />
       </view>
     </CrossRouter>
   )

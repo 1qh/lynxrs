@@ -46,7 +46,15 @@
     "rename": "Rename",
     "delete": "Delete",
     "search_placeholder": "Search conversations…",
-    "voice": "Voice input"
+    "voice": "Voice input",
+    "attach": "Attach image",
+    "speak": "Read aloud",
+    "share": "Share",
+    "settings": "Settings",
+    "system_prompt": "System prompt",
+    "system_prompt_placeholder": "You are a helpful assistant…",
+    "temperature": "Temperature",
+    "close": "Close"
   },
   "settings": {
     "profile": "Profile",
@@ -121,6 +129,16 @@
   "lang": {
     "switch_to": "VI",
     "switch_back": "EN"
+  },
+  "cmdk": {
+    "title": "Quick actions",
+    "go_chat": "Go to Chat",
+    "go_files": "Go to Files",
+    "go_orgs": "Go to Orgs",
+    "go_audit": "Go to Audit",
+    "go_settings": "Go to Settings",
+    "toggle_theme": "Toggle light / dark",
+    "toggle_lang": "Toggle EN / VI"
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",

@@ -13,6 +13,9 @@ type Conversation = {
   title: string
   model: string
   updated_at: string
+  system_prompt?: string
+  temperature?: number
+  shared?: boolean
 }
 
 const BASE =
@@ -32,6 +35,7 @@ export function ChatPanel() {
   const [streaming, setStreaming] = useState(false)
   const [searchQ, setSearchQ] = useState('')
   const [searchHits, setSearchHits] = useState<Array<{ conversation_id: string; title: string; snippet: string }>>([])
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const inputRef = useRef('')
   const searchRef = useRef('')
   const abortRef = useRef<AbortController | null>(null)
@@ -149,6 +153,87 @@ export function ChatPanel() {
       setSearchHits(await r.json())
     } catch {}
   }, [])
+
+  const speakLast = useCallback(() => {
+    const w = globalThis as { speechSynthesis?: { speak: (u: unknown) => void; cancel: () => void } }
+    const Ctor = (globalThis as { SpeechSynthesisUtterance?: { new (s: string): unknown } }).SpeechSynthesisUtterance
+    if (!w.speechSynthesis || !Ctor) return
+    const last = [...messages].reverse().find((m) => m.role === 'assistant')
+    if (!last) return
+    w.speechSynthesis.cancel()
+    const u = new Ctor(last.content)
+    w.speechSynthesis.speak(u)
+  }, [messages])
+
+  const attachImage = useCallback(() => {
+    const doc = (globalThis as { document?: Document }).document
+    if (!doc) return
+    const el = doc.createElement('input')
+    el.type = 'file'
+    el.accept = 'image/*'
+    el.onchange = async () => {
+      const f = el.files?.[0]
+      if (!f) return
+      const ab = await f.arrayBuffer()
+      const bytes = new Uint8Array(ab)
+      let bin = ''
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!)
+      const dataUrl = `data:${f.type || 'image/png'};base64,${btoa(bin)}`
+      // Embed as markdown image syntax in the next user message.
+      inputRef.current = `${inputRef.current}\n\n![attachment](${dataUrl})`
+      const input = doc.querySelector('input[placeholder]') as HTMLInputElement | null
+      if (input) {
+        input.value = inputRef.current
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+    }
+    el.click()
+  }, [])
+
+  const shareConversation = useCallback(async () => {
+    if (!activeId) return
+    try {
+      const f = (globalThis as { fetch?: typeof fetch }).fetch
+      if (!f) return
+      const headers = await csrfHeaders()
+      const r = await f(`${BASE}/api/conversations/${activeId}/share`, {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+      })
+      if (!r.ok) {
+        reportError(`status ${r.status}`, 'Share failed')
+        return
+      }
+      const d = (await r.json()) as { url: string; token: string }
+      const w = globalThis as { prompt?: (m: string, def?: string) => string | null }
+      w.prompt?.('Public share URL (copy):', d.url)
+      void refreshConvs()
+    } catch (e) {
+      reportError(e, 'Share threw')
+    }
+  }, [activeId, refreshConvs])
+
+  const updateSettings = useCallback(
+    async (patch: { system_prompt?: string; temperature?: number; model?: string }) => {
+      if (!activeId) return
+      try {
+        const f = (globalThis as { fetch?: typeof fetch }).fetch
+        if (!f) return
+        const headers = await csrfHeaders()
+        await f(`${BASE}/api/conversations/${activeId}`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { ...headers, 'content-type': 'application/json' },
+          body: JSON.stringify(patch),
+        })
+        void refreshConvs()
+      } catch (e) {
+        reportError(e, 'Save settings failed')
+      }
+    },
+    [activeId, refreshConvs],
+  )
 
   const startVoice = useCallback(() => {
     const w = globalThis as {
@@ -431,6 +516,83 @@ export function ChatPanel() {
         </view>
       )}
 
+      {/* Conversation settings + share + speak buttons */}
+      {active ? (
+        <view className="flex-row gap-2 px-1">
+          <view
+            className="h-7 rounded-md bg-secondary border border-border items-center justify-center px-3"
+            bindtap={() => setSettingsOpen(true)}
+            aria-label={t('chat.settings')}
+          >
+            <text className="text-secondary-foreground text-xs">⚙</text>
+          </view>
+          <view
+            className="h-7 rounded-md bg-secondary border border-border items-center justify-center px-3"
+            bindtap={() => void shareConversation()}
+            aria-label={t('chat.share')}
+          >
+            <text className="text-secondary-foreground text-xs">
+              🔗{active.shared ? ' ✓' : ''}
+            </text>
+          </view>
+          <view
+            className="h-7 rounded-md bg-secondary border border-border items-center justify-center px-3"
+            bindtap={speakLast}
+            aria-label={t('chat.speak')}
+          >
+            <text className="text-secondary-foreground text-xs">🔊</text>
+          </view>
+        </view>
+      ) : null}
+
+      {/* Settings dialog */}
+      {settingsOpen && active ? (
+        <view className="rounded-md bg-card border border-border p-3 gap-2">
+          <text className="text-foreground text-sm font-medium">{t('chat.settings')}</text>
+          <text className="text-xs text-muted-foreground">{t('chat.system_prompt')}</text>
+          <input
+            className="h-9 rounded-md bg-background text-foreground px-3 text-sm border border-input"
+            placeholder={t('chat.system_prompt_placeholder')}
+            type="text"
+            bindinput={(e: { detail: { value: string } }) => {
+              void updateSettings({ system_prompt: e.detail.value })
+            }}
+          />
+          <text className="text-xs text-muted-foreground">
+            {t('chat.temperature')}: {(active.temperature ?? 0.7).toFixed(2)}
+          </text>
+          <view className="flex-row gap-2">
+            {[0.0, 0.3, 0.7, 1.0, 1.5].map((v) => (
+              <view
+                key={v}
+                className={
+                  (active.temperature ?? 0.7) === v
+                    ? 'flex-1 h-8 rounded-md bg-primary items-center justify-center'
+                    : 'flex-1 h-8 rounded-md bg-background border border-input items-center justify-center'
+                }
+                bindtap={() => void updateSettings({ temperature: v })}
+              >
+                <text
+                  className={
+                    (active.temperature ?? 0.7) === v
+                      ? 'text-primary-foreground text-xs font-medium'
+                      : 'text-foreground text-xs font-medium'
+                  }
+                >
+                  {v.toFixed(1)}
+                </text>
+              </view>
+            ))}
+          </view>
+          <view
+            className="h-8 rounded-md bg-background border border-input items-center justify-center"
+            bindtap={() => setSettingsOpen(false)}
+          >
+            <text className="text-foreground text-xs font-medium">{t('chat.close')}</text>
+          </view>
+        </view>
+      ) : null}
+
       {/* Action row: stop / regenerate + token meter */}
       {active ? (
         <view className="flex-row items-center justify-between gap-2 px-1">
@@ -473,6 +635,13 @@ export function ChatPanel() {
             inputRef.current = e.detail.value
           }}
         />
+        <view
+          className="h-10 rounded-md bg-secondary border border-border items-center justify-center px-3"
+          bindtap={attachImage}
+          aria-label={t('chat.attach')}
+        >
+          <text className="text-secondary-foreground text-sm">📎</text>
+        </view>
         <view
           className="h-10 rounded-md bg-secondary border border-border items-center justify-center px-3"
           bindtap={startVoice}

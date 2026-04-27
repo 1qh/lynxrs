@@ -46,7 +46,15 @@
     "rename": "Đổi tên",
     "delete": "Xóa",
     "search_placeholder": "Tìm cuộc trò chuyện…",
-    "voice": "Nhập bằng giọng nói"
+    "voice": "Nhập bằng giọng nói",
+    "attach": "Đính kèm ảnh",
+    "speak": "Đọc to",
+    "share": "Chia sẻ",
+    "settings": "Cài đặt",
+    "system_prompt": "Lời nhắc hệ thống",
+    "system_prompt_placeholder": "Bạn là trợ lý hữu ích…",
+    "temperature": "Nhiệt độ",
+    "close": "Đóng"
   },
   "settings": {
     "profile": "Hồ sơ",
@@ -121,6 +129,16 @@
   "lang": {
     "switch_to": "VI",
     "switch_back": "EN"
+  },
+  "cmdk": {
+    "title": "Hành động nhanh",
+    "go_chat": "Đến Trò chuyện",
+    "go_files": "Đến Tệp",
+    "go_orgs": "Đến Tổ chức",
+    "go_audit": "Đến Kiểm toán",
+    "go_settings": "Đến Cài đặt",
+    "toggle_theme": "Đổi sáng / tối",
+    "toggle_lang": "Đổi EN / VI"
   },
   "shortcuts": {
     "title": "Phím tắt",
