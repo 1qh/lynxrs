@@ -116,3 +116,17 @@
 .ToastError { background-color: #4a1a20; border: 1px solid #8a3340; }
 .ToastInfo { background-color: #1a2340; border: 1px solid #3a4a8a; }
 .ToastText { color: #f5d5d8; font-size: 13px; }
+
+.HeaderRow {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.LangSwitch {
+  background-color: #1a2340;
+  border-radius: 6px;
+  padding: 6px 10px;
+  border: 1px solid #2a355a;
+}
+.LangSwitchText { color: #8aa2ff; font-size: 13px; font-weight: 600; }

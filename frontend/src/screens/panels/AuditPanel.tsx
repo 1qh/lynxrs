@@ -1,7 +1,9 @@
 import { useCallback, useState } from '@lynx-js/react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../../api/client.js'
 
 export function AuditPanel() {
+  const { t } = useTranslation()
   const [audit, setAudit] = useState<Array<{ action: string; ip?: string | null; created_at: string }>>([])
   const load = useCallback(async () => {
     const { data } = await api.GET('/me/audit', {})
@@ -10,7 +12,7 @@ export function AuditPanel() {
   return (
     <view>
       <view className="Button ButtonGhost" bindtap={load}>
-        <text className="ButtonText">Load audit log</text>
+        <text className="ButtonText">{t('audit.load')}</text>
       </view>
       {audit.length > 0 ? (
         <view className="AuditList">

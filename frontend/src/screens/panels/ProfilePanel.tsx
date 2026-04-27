@@ -1,8 +1,10 @@
 import { useCallback, useState } from '@lynx-js/react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../../api/client.js'
 import { useAuth } from '../../state/auth.js'
 
 export function ProfilePanel() {
+  const { t } = useTranslation()
   const user = useAuth((s) => s.user)!
   const setUser = useAuth((s) => s.setUser)
   const [displayName, setDisplayName] = useState<string>(user.display_name ?? '')
@@ -16,15 +18,17 @@ export function ProfilePanel() {
 
   return (
     <view>
-      <text className="Muted">display_name: {user.display_name ?? '—'}</text>
+      <text className="Muted">
+        {t('profile.display_name_label', { value: user.display_name ?? t('profile.display_name_empty') })}
+      </text>
       <input
         className="Input"
-        placeholder="your display name"
+        placeholder={t('profile.display_name_placeholder')}
         type="text"
         bindinput={(e: { detail: { value: string } }) => setDisplayName(e.detail.value)}
       />
       <view className="Button ButtonGhost" bindtap={save}>
-        <text className="ButtonText">Save profile</text>
+        <text className="ButtonText">{t('profile.save_profile')}</text>
       </view>
     </view>
   )

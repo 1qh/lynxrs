@@ -1,9 +1,11 @@
 import { useCallback, useState } from '@lynx-js/react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../../api/client.js'
 import { useAuth } from '../../state/auth.js'
 import { reportError } from '../../state/toast.js'
 
 export function MfaPanel() {
+  const { t } = useTranslation()
   const user = useAuth((s) => s.user)!
   const setUser = useAuth((s) => s.setUser)
   const [mfaSecret, setMfaSecret] = useState<string | null>(null)
@@ -37,20 +39,20 @@ export function MfaPanel() {
     return (
       <view>
         <view className="Button ButtonGhost" bindtap={enroll}>
-          <text className="ButtonText">Enable MFA (TOTP)</text>
+          <text className="ButtonText">{t('mfa.enable')}</text>
         </view>
         {mfaSecret ? (
           <view>
-            <text className="Muted">Scan this secret into your authenticator:</text>
+            <text className="Muted">{t('mfa.scan')}</text>
             <text className="FileName">{mfaSecret}</text>
             <input
               className="Input"
-              placeholder="6-digit code"
+              placeholder={t('mfa.code_placeholder')}
               type="text"
               bindinput={(e: { detail: { value: string } }) => setMfaCode(e.detail.value)}
             />
             <view className="Button" bindtap={activate}>
-              <text className="ButtonText">Activate MFA</text>
+              <text className="ButtonText">{t('mfa.activate')}</text>
             </view>
           </view>
         ) : null}
@@ -60,13 +62,13 @@ export function MfaPanel() {
 
   return (
     <view>
-      <text className="Muted">MFA enabled ✓</text>
+      <text className="Muted">{t('mfa.enabled')}</text>
       <view className="Button ButtonGhost" bindtap={generateRecovery}>
-        <text className="ButtonText">Generate recovery codes</text>
+        <text className="ButtonText">{t('mfa.generate_recovery')}</text>
       </view>
       {recoveryCodes.length > 0 ? (
         <view className="RecoveryCodes">
-          <text className="Muted">Save these codes now — each works once:</text>
+          <text className="Muted">{t('mfa.recovery_save')}</text>
           {recoveryCodes.map((c, i) => (
             <text key={i} className="FileName">{c}</text>
           ))}

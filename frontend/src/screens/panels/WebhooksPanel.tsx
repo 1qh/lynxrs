@@ -1,7 +1,9 @@
 import { useCallback, useState } from '@lynx-js/react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../../api/client.js'
 
 export function WebhooksPanel() {
+  const { t } = useTranslation()
   const [webhooks, setWebhooks] = useState<Array<{ id: string; url: string; enabled: boolean }>>([])
   const [webhookUrl, setWebhookUrl] = useState('')
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null)
@@ -31,7 +33,7 @@ export function WebhooksPanel() {
   return (
     <view>
       <view className="Button ButtonGhost" bindtap={refresh}>
-        <text className="ButtonText">Load webhooks</text>
+        <text className="ButtonText">{t('webhooks.load')}</text>
       </view>
       {webhooks.length > 0 ? (
         <view className="WebhookList">
@@ -39,7 +41,7 @@ export function WebhooksPanel() {
             <view key={w.id} className="WebhookRow">
               <text className="WebhookUrl">{w.url}</text>
               <view className="Button ButtonGhost" bindtap={() => void revoke(w.id)}>
-                <text className="ButtonText">revoke</text>
+                <text className="ButtonText">{t('webhooks.revoke')}</text>
               </view>
             </view>
           ))}
@@ -47,15 +49,15 @@ export function WebhooksPanel() {
       ) : null}
       <input
         className="Input"
-        placeholder="https://your-host/hook"
+        placeholder={t('webhooks.url_placeholder')}
         type="text"
         bindinput={(e: { detail: { value: string } }) => setWebhookUrl(e.detail.value)}
       />
       <view className="Button" bindtap={create}>
-        <text className="ButtonText">Register webhook</text>
+        <text className="ButtonText">{t('webhooks.register')}</text>
       </view>
       {webhookSecret ? (
-        <text className="Muted">webhook secret (copy now, shown once): {webhookSecret}</text>
+        <text className="Muted">{t('webhooks.secret_once', { secret: webhookSecret })}</text>
       ) : null}
     </view>
   )

@@ -1,0 +1,93 @@
+{
+  "app": {
+    "title": "simu",
+    "loading": "loading…"
+  },
+  "auth": {
+    "create_account": "Create account",
+    "login": "Login",
+    "email": "email",
+    "password": "password",
+    "sign_up": "Sign up",
+    "log_in": "Log in",
+    "have_account": "Have an account? Log in",
+    "new_here": "New here? Sign up",
+    "email_invalid": "email looks invalid",
+    "password_too_short": "password must be at least 12 chars",
+    "failed": "failed"
+  },
+  "home": {
+    "hello": "Hello {{email}}",
+    "email_not_verified": "Email not verified · tap to resend",
+    "log_out": "Log out",
+    "log_out_all": "Log out all devices"
+  },
+  "tabs": {
+    "files": "Files",
+    "profile": "Profile",
+    "orgs": "Orgs",
+    "trash": "Trash",
+    "webhooks": "Webhooks",
+    "audit": "Audit",
+    "mfa": "MFA",
+    "admin": "Admin"
+  },
+  "files": {
+    "filter_placeholder": "filter files by name…",
+    "upload_file": "Upload file",
+    "upload_sample": "Upload sample text",
+    "uploading": "uploading…",
+    "no_files": "no files yet",
+    "loading": "loading…",
+    "describe": "✎ describe",
+    "save_description": "Save description",
+    "description_placeholder": "file description",
+    "load_starred": "Load starred ({{count}})",
+    "share_label": "share: {{url}}"
+  },
+  "profile": {
+    "display_name_label": "display_name: {{value}}",
+    "display_name_empty": "—",
+    "display_name_placeholder": "your display name",
+    "save_profile": "Save profile"
+  },
+  "orgs": {
+    "load": "Load orgs ({{count}})",
+    "name_placeholder": "Org name",
+    "slug_placeholder": "slug (a-z0-9-)",
+    "create": "Create org",
+    "detail_summary": "Org {{id}}… — members: {{members}}, files: {{files}}, bytes: {{bytes}}"
+  },
+  "trash": {
+    "load": "Load trash",
+    "restore": "restore",
+    "purge": "purge"
+  },
+  "webhooks": {
+    "load": "Load webhooks",
+    "url_placeholder": "https://your-host/hook",
+    "register": "Register webhook",
+    "revoke": "revoke",
+    "secret_once": "webhook secret (copy now, shown once): {{secret}}"
+  },
+  "audit": {
+    "load": "Load audit log"
+  },
+  "mfa": {
+    "enable": "Enable MFA (TOTP)",
+    "scan": "Scan this secret into your authenticator:",
+    "code_placeholder": "6-digit code",
+    "activate": "Activate MFA",
+    "enabled": "MFA enabled ✓",
+    "generate_recovery": "Generate recovery codes",
+    "recovery_save": "Save these codes now — each works once:"
+  },
+  "admin": {
+    "stats": "Admin stats",
+    "stats_summary": "users: {{users}} · files: {{files}} · bytes: {{bytes}}"
+  },
+  "lang": {
+    "switch_to": "VI",
+    "switch_back": "EN"
+  }
+}

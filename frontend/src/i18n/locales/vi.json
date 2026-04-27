@@ -1,0 +1,93 @@
+{
+  "app": {
+    "title": "simu",
+    "loading": "đang tải…"
+  },
+  "auth": {
+    "create_account": "Tạo tài khoản",
+    "login": "Đăng nhập",
+    "email": "email",
+    "password": "mật khẩu",
+    "sign_up": "Đăng ký",
+    "log_in": "Đăng nhập",
+    "have_account": "Đã có tài khoản? Đăng nhập",
+    "new_here": "Mới tới? Đăng ký",
+    "email_invalid": "email không hợp lệ",
+    "password_too_short": "mật khẩu phải có ít nhất 12 ký tự",
+    "failed": "thất bại"
+  },
+  "home": {
+    "hello": "Xin chào {{email}}",
+    "email_not_verified": "Email chưa xác minh · chạm để gửi lại",
+    "log_out": "Đăng xuất",
+    "log_out_all": "Đăng xuất mọi thiết bị"
+  },
+  "tabs": {
+    "files": "Tệp",
+    "profile": "Hồ sơ",
+    "orgs": "Tổ chức",
+    "trash": "Thùng rác",
+    "webhooks": "Webhook",
+    "audit": "Kiểm toán",
+    "mfa": "MFA",
+    "admin": "Quản trị"
+  },
+  "files": {
+    "filter_placeholder": "lọc tệp theo tên…",
+    "upload_file": "Tải tệp lên",
+    "upload_sample": "Tải văn bản mẫu",
+    "uploading": "đang tải lên…",
+    "no_files": "chưa có tệp nào",
+    "loading": "đang tải…",
+    "describe": "✎ mô tả",
+    "save_description": "Lưu mô tả",
+    "description_placeholder": "mô tả tệp",
+    "load_starred": "Tải mục đã đánh dấu ({{count}})",
+    "share_label": "chia sẻ: {{url}}"
+  },
+  "profile": {
+    "display_name_label": "tên hiển thị: {{value}}",
+    "display_name_empty": "—",
+    "display_name_placeholder": "tên hiển thị của bạn",
+    "save_profile": "Lưu hồ sơ"
+  },
+  "orgs": {
+    "load": "Tải tổ chức ({{count}})",
+    "name_placeholder": "Tên tổ chức",
+    "slug_placeholder": "slug (a-z0-9-)",
+    "create": "Tạo tổ chức",
+    "detail_summary": "Tổ chức {{id}}… — thành viên: {{members}}, tệp: {{files}}, byte: {{bytes}}"
+  },
+  "trash": {
+    "load": "Tải thùng rác",
+    "restore": "khôi phục",
+    "purge": "xóa vĩnh viễn"
+  },
+  "webhooks": {
+    "load": "Tải webhook",
+    "url_placeholder": "https://host-cua-ban/hook",
+    "register": "Đăng ký webhook",
+    "revoke": "thu hồi",
+    "secret_once": "secret webhook (sao chép ngay, chỉ hiện một lần): {{secret}}"
+  },
+  "audit": {
+    "load": "Tải nhật ký kiểm toán"
+  },
+  "mfa": {
+    "enable": "Bật MFA (TOTP)",
+    "scan": "Quét secret này vào ứng dụng xác thực:",
+    "code_placeholder": "mã 6 chữ số",
+    "activate": "Kích hoạt MFA",
+    "enabled": "MFA đã bật ✓",
+    "generate_recovery": "Tạo mã khôi phục",
+    "recovery_save": "Lưu các mã này ngay — mỗi mã chỉ dùng một lần:"
+  },
+  "admin": {
+    "stats": "Thống kê quản trị",
+    "stats_summary": "người dùng: {{users}} · tệp: {{files}} · byte: {{bytes}}"
+  },
+  "lang": {
+    "switch_to": "VI",
+    "switch_back": "EN"
+  }
+}

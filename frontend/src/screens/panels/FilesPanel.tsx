@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from '@lynx-js/react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../../api/client.js'
 import { reportError } from '../../state/toast.js'
 import type { components } from '../../api/schema.js'
@@ -6,6 +7,7 @@ import type { components } from '../../api/schema.js'
 type FileDto = components['schemas']['FileDto']
 
 export function FilesPanel({ refreshKey }: { refreshKey: number }) {
+  const { t } = useTranslation()
   const [files, setFiles] = useState<FileDto[]>([])
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -144,22 +146,22 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
   return (
     <view>
       <view className="Button" bindtap={busy ? undefined : pickAndUpload}>
-        <text className="ButtonText">{busy ? 'uploading…' : 'Upload file'}</text>
+        <text className="ButtonText">{busy ? t('files.uploading') : t('files.upload_file')}</text>
       </view>
       <view className="Button ButtonGhost" bindtap={busy ? undefined : uploadSample}>
-        <text className="ButtonText">Upload sample text</text>
+        <text className="ButtonText">{t('files.upload_sample')}</text>
       </view>
       <input
         className="Input"
-        placeholder="filter files by name…"
+        placeholder={t('files.filter_placeholder')}
         type="text"
         bindinput={(e: { detail: { value: string } }) => setQuery(e.detail.value)}
       />
       <view className="FileList">
         {loading ? (
-          <text className="Muted">loading…</text>
+          <text className="Muted">{t('files.loading')}</text>
         ) : files.length === 0 ? (
-          <text className="Muted">no files yet</text>
+          <text className="Muted">{t('files.no_files')}</text>
         ) : (
           files
             .filter((f) =>
@@ -174,28 +176,28 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
                 <text className="ButtonText">⭐</text>
               </view>
               <view className="Button ButtonGhost" bindtap={() => setDescEdit({ id: f.id, text: f.description ?? '' })}>
-                <text className="ButtonText">✎ describe</text>
+                <text className="ButtonText">{t('files.describe')}</text>
               </view>
             </view>
           ))
         )}
       </view>
-      {shareUrl ? <text className="Muted">share: {shareUrl}</text> : null}
+      {shareUrl ? <text className="Muted">{t('files.share_label', { url: shareUrl })}</text> : null}
       <view className="Button ButtonGhost" bindtap={refreshStarred}>
-        <text className="ButtonText">Load starred ({starred.length})</text>
+        <text className="ButtonText">{t('files.load_starred', { count: starred.length })}</text>
       </view>
       {descEdit ? (
         <view className="DescEdit">
           <input
             className="Input"
-            placeholder="file description"
+            placeholder={t('files.description_placeholder')}
             type="text"
             bindinput={(e: { detail: { value: string } }) =>
               setDescEdit({ id: descEdit.id, text: e.detail.value })
             }
           />
           <view className="Button" bindtap={saveDescribe}>
-            <text className="ButtonText">Save description</text>
+            <text className="ButtonText">{t('files.save_description')}</text>
           </view>
         </view>
       ) : null}

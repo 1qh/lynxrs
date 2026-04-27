@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from '@lynx-js/react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.js'
 import { useAuth } from '../state/auth.js'
 import { useEvents } from '../lib/useEvents.js'
@@ -13,18 +14,19 @@ import { MfaPanel } from './panels/MfaPanel.js'
 
 type Tab = 'files' | 'profile' | 'orgs' | 'trash' | 'webhooks' | 'audit' | 'mfa' | 'admin'
 
-const TABS: ReadonlyArray<{ id: Tab; label: string; adminOnly?: boolean }> = [
-  { id: 'files', label: 'Files' },
-  { id: 'profile', label: 'Profile' },
-  { id: 'orgs', label: 'Orgs' },
-  { id: 'trash', label: 'Trash' },
-  { id: 'webhooks', label: 'Webhooks' },
-  { id: 'audit', label: 'Audit' },
-  { id: 'mfa', label: 'MFA' },
-  { id: 'admin', label: 'Admin', adminOnly: true },
+const TABS: ReadonlyArray<{ id: Tab; labelKey: string; adminOnly?: boolean }> = [
+  { id: 'files', labelKey: 'tabs.files' },
+  { id: 'profile', labelKey: 'tabs.profile' },
+  { id: 'orgs', labelKey: 'tabs.orgs' },
+  { id: 'trash', labelKey: 'tabs.trash' },
+  { id: 'webhooks', labelKey: 'tabs.webhooks' },
+  { id: 'audit', labelKey: 'tabs.audit' },
+  { id: 'mfa', labelKey: 'tabs.mfa' },
+  { id: 'admin', labelKey: 'tabs.admin', adminOnly: true },
 ]
 
 export function Home() {
+  const { t } = useTranslation()
   const user = useAuth((s) => s.user)!
   const setUser = useAuth((s) => s.setUser)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -85,24 +87,24 @@ export function Home() {
 
   const bumpFiles = useCallback(() => setRefreshKey((k) => k + 1), [])
 
-  const visibleTabs = TABS.filter((t) => !t.adminOnly || user.role === 'admin')
+  const visibleTabs = TABS.filter((tb) => !tb.adminOnly || user.role === 'admin')
 
   return (
     <view className="Card">
-      <text className="H2">Hello {user.email}</text>
+      <text className="H2">{t('home.hello', { email: user.email })}</text>
       {!user.email_verified ? (
         <view className="Banner" bindtap={resend}>
-          <text className="BannerText">Email not verified · tap to resend</text>
+          <text className="BannerText">{t('home.email_not_verified')}</text>
         </view>
       ) : null}
       <view className="TabBar">
-        {visibleTabs.map((t) => (
+        {visibleTabs.map((tb) => (
           <view
-            key={t.id}
-            className={tab === t.id ? 'Tab TabActive' : 'Tab'}
-            bindtap={() => setTab(t.id)}
+            key={tb.id}
+            className={tab === tb.id ? 'Tab TabActive' : 'Tab'}
+            bindtap={() => setTab(tb.id)}
           >
-            <text className={tab === t.id ? 'TabText TabTextActive' : 'TabText'}>{t.label}</text>
+            <text className={tab === tb.id ? 'TabText TabTextActive' : 'TabText'}>{t(tb.labelKey)}</text>
           </view>
         ))}
       </view>
@@ -117,10 +119,10 @@ export function Home() {
         {tab === 'admin' && user.role === 'admin' ? <AdminPanel /> : null}
       </view>
       <view className="Button ButtonGhost" bindtap={logout}>
-        <text className="ButtonText">Log out</text>
+        <text className="ButtonText">{t('home.log_out')}</text>
       </view>
       <view className="Button ButtonGhost" bindtap={logoutAll}>
-        <text className="ButtonText">Log out all devices</text>
+        <text className="ButtonText">{t('home.log_out_all')}</text>
       </view>
     </view>
   )
