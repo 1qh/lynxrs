@@ -62,8 +62,8 @@ test('tab nav switches panel and survives reload via hash', async ({ browser }) 
   // Default tab is Files — its "Upload sample text" button is the tell.
   await waitForText(page, 'Upload sample text', 15_000)
 
-  // Switch to Profile tab; "Save profile" button appears only there.
-  await tapText(page, 'Profile')
+  // Switch to Settings tab; the Profile section button is the tell.
+  await tapText(page, 'Settings')
   await waitForText(page, 'Save profile', 10_000)
 
   // Switch back to Files; the FilesPanel button reappears.

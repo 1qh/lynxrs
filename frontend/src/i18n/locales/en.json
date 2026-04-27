@@ -24,13 +24,20 @@
   },
   "tabs": {
     "files": "Files",
-    "profile": "Profile",
     "orgs": "Orgs",
     "trash": "Trash",
-    "webhooks": "Webhooks",
     "audit": "Audit",
-    "mfa": "MFA",
+    "settings": "Settings",
     "admin": "Admin"
+  },
+  "settings": {
+    "profile": "Profile",
+    "mfa": "MFA",
+    "webhooks": "Webhooks"
+  },
+  "org": {
+    "personal": "Personal",
+    "context_switcher": "Switch organization context"
   },
   "files": {
     "filter_placeholder": "filter files by name…",

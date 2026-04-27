@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from '@lynx-js/react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../../api/client.js'
 import { reportError } from '../../state/toast.js'
+import { useOrgContext } from '../../state/orgContext.js'
 import type { components } from '../../api/schema.js'
 
 type FileDto = components['schemas']['FileDto']
 
 export function FilesPanel({ refreshKey }: { refreshKey: number }) {
   const { t } = useTranslation()
+  const activeOrgId = useOrgContext((s) => s.activeOrgId)
   const [files, setFiles] = useState<FileDto[]>([])
   const [cursor, setCursor] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -27,13 +29,16 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
       if (error) reportError(error, 'Load files failed')
       if (data) {
         const d = data as { items: FileDto[]; next_cursor?: string | null }
-        setFiles(d.items ?? [])
+        const items = (d.items ?? []).filter((f) =>
+          activeOrgId ? f.org_id === activeOrgId : f.org_id == null,
+        )
+        setFiles(items)
         setCursor(d.next_cursor ?? null)
       }
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [activeOrgId])
 
   const loadMore = useCallback(async () => {
     if (!cursor || loadingMore) return
@@ -45,13 +50,16 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
       if (error) reportError(error, 'Load more failed')
       if (data) {
         const d = data as { items: FileDto[]; next_cursor?: string | null }
-        setFiles((cur) => [...cur, ...(d.items ?? [])])
+        const more = (d.items ?? []).filter((f) =>
+          activeOrgId ? f.org_id === activeOrgId : f.org_id == null,
+        )
+        setFiles((cur) => [...cur, ...more])
         setCursor(d.next_cursor ?? null)
       }
     } finally {
       setLoadingMore(false)
     }
-  }, [cursor, loadingMore])
+  }, [cursor, loadingMore, activeOrgId])
 
   const toggleSelect = useCallback((id: string) => {
     setSelected((cur) => {
@@ -85,6 +93,7 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
           filename: `note-${Date.now()}.txt`,
           content_type: 'text/plain',
           data_base64,
+          ...(activeOrgId ? { org_id: activeOrgId } : {}),
         },
       })
       if (error) reportError(error, 'Upload failed')
@@ -110,6 +119,7 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
             filename: f.name,
             content_type: f.type || 'application/octet-stream',
             data_base64,
+            ...(activeOrgId ? { org_id: activeOrgId } : {}),
           },
         })
         if (error) reportError(error, 'Upload failed')
@@ -120,7 +130,7 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
         setBusy(false)
       }
     },
-    [refresh],
+    [refresh, activeOrgId],
   )
 
   const pickAndUpload = useCallback(() => {
@@ -273,8 +283,17 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
                     <text
                       className="text-foreground text-sm font-medium"
                       bindtap={() => {
-                        if (f.content_type.startsWith('image/')) setPreview(f)
-                        else void share(f.id)
+                        // image/pdf/text/audio/video → preview modal; others → share link.
+                        const c = f.content_type
+                        if (
+                          c.startsWith('image/') ||
+                          c === 'application/pdf' ||
+                          c.startsWith('text/') ||
+                          c.startsWith('audio/') ||
+                          c.startsWith('video/')
+                        ) {
+                          setPreview(f)
+                        } else void share(f.id)
                       }}
                     >
                       {f.filename}
@@ -349,26 +368,61 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
           </view>
         </view>
       ) : null}
-      {preview ? (
-        <view
-          className="fixed inset-0 bg-background/95 items-center justify-center p-6 z-[9000]"
-          bindtap={() => setPreview(null)}
-        >
-          <view className="rounded-md bg-card border border-border p-4 gap-3 max-w-[90%] max-h-[90%]">
-            <text className="text-foreground text-sm font-medium">{preview.filename}</text>
-            <image
-              src={`${(import.meta.env?.PUBLIC_API_BASE as string | undefined) ?? 'http://localhost:8088'}/api/files/${preview.id}?inline=true`}
-              className="rounded-md max-w-[80vw] max-h-[70vh]"
-            />
-            <view
-              className="h-9 rounded-md bg-background border border-input items-center justify-center"
-              bindtap={() => setPreview(null)}
-            >
-              <text className="text-foreground text-sm font-medium">close</text>
-            </view>
+      {preview ? <PreviewModal file={preview} onClose={() => setPreview(null)} /> : null}
+    </view>
+  )
+}
+
+function PreviewModal({ file, onClose }: { file: FileDto; onClose: () => void }) {
+  const base =
+    (import.meta.env?.PUBLIC_API_BASE as string | undefined) ?? 'http://localhost:8088'
+  const url = `${base}/api/files/${file.id}?inline=true`
+  const c = file.content_type
+  return (
+    <view
+      className="fixed inset-0 bg-background/95 items-center justify-center p-6 z-[9000]"
+      bindtap={onClose}
+    >
+      <view className="rounded-md bg-card border border-border p-4 gap-3 max-w-[90%] max-h-[90%]">
+        <text className="text-foreground text-sm font-medium">{file.filename}</text>
+        {c.startsWith('image/') ? (
+          <image src={url} className="rounded-md max-w-[80vw] max-h-[70vh]" />
+        ) : c === 'application/pdf' ? (
+          <view className="w-[80vw] h-[70vh] rounded-md bg-background border border-border">
+            <text className="text-muted-foreground text-sm p-3">
+              PDF preview only renders on web target. URL: {url}
+            </text>
           </view>
+        ) : c.startsWith('text/') ? (
+          <TextPreview url={url} />
+        ) : c.startsWith('audio/') ? (
+          <text className="text-muted-foreground text-sm">audio: {url}</text>
+        ) : c.startsWith('video/') ? (
+          <text className="text-muted-foreground text-sm">video: {url}</text>
+        ) : null}
+        <view
+          className="h-9 rounded-md bg-background border border-input items-center justify-center"
+          bindtap={onClose}
+          aria-label="close preview"
+        >
+          <text className="text-foreground text-sm font-medium">close</text>
         </view>
-      ) : null}
+      </view>
+    </view>
+  )
+}
+
+function TextPreview({ url }: { url: string }) {
+  const [text, setText] = useState<string>('loading…')
+  useEffect(() => {
+    void fetch(url, { credentials: 'include' })
+      .then((r) => r.text())
+      .then((s) => setText(s.length > 8000 ? s.slice(0, 8000) + '\n…(truncated)' : s))
+      .catch((e) => setText(`error: ${String(e)}`))
+  }, [url])
+  return (
+    <view className="w-[80vw] h-[70vh] rounded-md bg-background border border-border p-3 overflow-auto">
+      <text className="text-foreground text-xs font-mono whitespace-pre-wrap">{text}</text>
     </view>
   )
 }

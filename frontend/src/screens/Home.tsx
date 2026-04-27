@@ -1,91 +1,51 @@
-import { useCallback, useEffect, useState } from '@lynx-js/react'
+import { useCallback, useState } from '@lynx-js/react'
 import { useTranslation } from 'react-i18next'
+import { Routes, Route, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api/client.js'
 import { useAuth } from '../state/auth.js'
 import { useEvents } from '../lib/useEvents.js'
 import { useKeyboardShortcuts } from '../lib/useKeyboardShortcuts.js'
+import { OrgContextSwitcher } from './OrgContextSwitcher.js'
 import { AdminPanel } from './panels/AdminPanel.js'
 import { FilesPanel } from './panels/FilesPanel.js'
-import { ProfilePanel } from './panels/ProfilePanel.js'
+import { SettingsPanel } from './panels/SettingsPanel.js'
 import { OrgsPanel } from './panels/OrgsPanel.js'
 import { TrashPanel } from './panels/TrashPanel.js'
-import { WebhooksPanel } from './panels/WebhooksPanel.js'
 import { AuditPanel } from './panels/AuditPanel.js'
-import { MfaPanel } from './panels/MfaPanel.js'
 
-type Tab = 'files' | 'profile' | 'orgs' | 'trash' | 'webhooks' | 'audit' | 'mfa' | 'admin'
+type TabSpec = { path: string; labelKey: string; adminOnly?: boolean }
 
-const TABS: ReadonlyArray<{ id: Tab; labelKey: string; adminOnly?: boolean }> = [
-  { id: 'files', labelKey: 'tabs.files' },
-  { id: 'profile', labelKey: 'tabs.profile' },
-  { id: 'orgs', labelKey: 'tabs.orgs' },
-  { id: 'trash', labelKey: 'tabs.trash' },
-  { id: 'webhooks', labelKey: 'tabs.webhooks' },
-  { id: 'audit', labelKey: 'tabs.audit' },
-  { id: 'mfa', labelKey: 'tabs.mfa' },
-  { id: 'admin', labelKey: 'tabs.admin', adminOnly: true },
+const TABS: ReadonlyArray<TabSpec> = [
+  { path: '/files', labelKey: 'tabs.files' },
+  { path: '/orgs', labelKey: 'tabs.orgs' },
+  { path: '/trash', labelKey: 'tabs.trash' },
+  { path: '/audit', labelKey: 'tabs.audit' },
+  { path: '/settings', labelKey: 'tabs.settings' },
+  { path: '/admin', labelKey: 'tabs.admin', adminOnly: true },
 ]
 
-export function Home() {
+function Layout() {
   const { t } = useTranslation()
   const user = useAuth((s) => s.user)!
   const setUser = useAuth((s) => s.setUser)
+  const loc = useLocation()
+  const navigate = useNavigate()
   const [refreshKey, setRefreshKey] = useState(0)
-  const [tab, setTab] = useState<Tab>(() => {
-    try {
-      const loc = (globalThis as { location?: Location }).location
-      const hash = loc?.hash?.replace(/^#/, '')
-      if (hash && TABS.some((t) => t.id === hash)) return hash as Tab
-      const v = (globalThis as { localStorage?: Storage }).localStorage?.getItem('simu.tab')
-      if (v && TABS.some((t) => t.id === v)) return v as Tab
-    } catch {}
-    return 'files'
-  })
-
-  useEffect(() => {
-    try {
-      ;(globalThis as { localStorage?: Storage }).localStorage?.setItem('simu.tab', tab)
-      const loc = (globalThis as { location?: Location; history?: History }).location
-      const hist = (globalThis as { history?: History }).history
-      if (loc && hist && loc.hash !== `#${tab}`) {
-        hist.replaceState(null, '', `#${tab}`)
-      }
-    } catch {}
-  }, [tab])
-
-  useEffect(() => {
-    const w = globalThis as {
-      addEventListener?: (e: string, fn: () => void) => void
-      removeEventListener?: (e: string, fn: () => void) => void
-      location?: Location
-    }
-    if (!w.addEventListener || !w.location) return
-    const onHash = () => {
-      const h = w.location?.hash?.replace(/^#/, '')
-      if (h && TABS.some((t) => t.id === h)) setTab(h as Tab)
-    }
-    w.addEventListener('hashchange', onHash)
-    return () => w.removeEventListener?.('hashchange', onHash)
-  }, [])
 
   useEvents(['file_created', 'file_deleted'], () => {
     setRefreshKey((k) => k + 1)
   })
 
-  // Keyboard shortcuts: g+f = files, g+p = profile, g+o = orgs, g+t = trash,
-  // g+w = webhooks, g+a = audit, g+m = mfa. Inspired by GitHub's g-prefix.
-  // Single 'g' arms a brief listener for the next key.
-  const armed = useState(false)
-  const [gPrefix, setG] = armed
+  // g-prefix shortcuts: gf/go/gt/ga/gs/gd → tabs.
+  const [gPrefix, setG] = useState(false)
   useKeyboardShortcuts([
     { key: 'g', handler: () => { setG(true); setTimeout(() => setG(false), 1500) } },
-    { key: 'f', handler: () => gPrefix && setTab('files') },
-    { key: 'p', handler: () => gPrefix && setTab('profile') },
-    { key: 'o', handler: () => gPrefix && setTab('orgs') },
-    { key: 't', handler: () => gPrefix && setTab('trash') },
-    { key: 'w', handler: () => gPrefix && setTab('webhooks') },
-    { key: 'a', handler: () => gPrefix && setTab('audit') },
-    { key: 'm', handler: () => gPrefix && setTab('mfa') },
+    { key: 'f', handler: () => gPrefix && navigate('/files') },
+    { key: 'o', handler: () => gPrefix && navigate('/orgs') },
+    { key: 't', handler: () => gPrefix && navigate('/trash') },
+    { key: 'a', handler: () => gPrefix && navigate('/audit') },
+    { key: 's', handler: () => gPrefix && navigate('/settings') },
+    { key: 'd', handler: () => gPrefix && user.role === 'admin' && navigate('/admin') },
   ])
 
   const logout = useCallback(async () => {
@@ -102,19 +62,21 @@ export function Home() {
     await api.POST('/auth/email/resend', {})
   }, [])
 
-  const bumpFiles = useCallback(() => setRefreshKey((k) => k + 1), [])
-
   const visibleTabs = TABS.filter((tb) => !tb.adminOnly || user.role === 'admin')
 
   return (
     <view className="gap-4">
-      <text className="text-base font-medium text-foreground">
-        {t('home.hello', { email: user.email })}
-      </text>
+      <view className="flex-row items-center justify-between gap-2">
+        <text className="flex-1 text-base font-medium text-foreground" aria-label={`signed in as ${user.email}`}>
+          {t('home.hello', { email: user.email })}
+        </text>
+        <OrgContextSwitcher />
+      </view>
       {!user.email_verified ? (
         <view
           className="rounded-md bg-secondary border border-border px-3 py-2"
           bindtap={resend}
+          aria-label={t('home.email_not_verified')}
         >
           <text className="text-secondary-foreground text-[13px]">
             {t('home.email_not_verified')}
@@ -122,52 +84,82 @@ export function Home() {
         </view>
       ) : null}
       <view className="flex-row flex-wrap gap-1 py-2 border-b border-border">
-        {visibleTabs.map((tb) => (
-          <view
-            key={tb.id}
-            className={
-              tab === tb.id
-                ? 'rounded-md px-3 py-1.5 bg-primary'
-                : 'rounded-md px-3 py-1.5 bg-transparent'
-            }
-            bindtap={() => setTab(tb.id)}
-          >
-            <text
+        {visibleTabs.map((tb) => {
+          const active = loc.pathname.startsWith(tb.path)
+          return (
+            <NavLink
+              key={tb.path}
+              to={tb.path}
               className={
-                tab === tb.id
-                  ? 'text-primary-foreground text-sm font-medium'
-                  : 'text-muted-foreground text-sm font-medium'
+                active
+                  ? 'rounded-md px-3 py-1.5 bg-primary'
+                  : 'rounded-md px-3 py-1.5 bg-transparent'
               }
+              aria-label={t(tb.labelKey)}
             >
-              {t(tb.labelKey)}
-            </text>
-          </view>
-        ))}
+              <text
+                className={
+                  active
+                    ? 'text-primary-foreground text-sm font-medium'
+                    : 'text-muted-foreground text-sm font-medium'
+                }
+              >
+                {t(tb.labelKey)}
+              </text>
+            </NavLink>
+          )
+        })}
       </view>
       <view className="py-2 gap-3">
-        {tab === 'files' ? <FilesPanel refreshKey={refreshKey} /> : null}
-        {tab === 'profile' ? <ProfilePanel /> : null}
-        {tab === 'orgs' ? <OrgsPanel /> : null}
-        {tab === 'trash' ? <TrashPanel onRestore={bumpFiles} /> : null}
-        {tab === 'webhooks' ? <WebhooksPanel /> : null}
-        {tab === 'audit' ? <AuditPanel /> : null}
-        {tab === 'mfa' ? <MfaPanel /> : null}
-        {tab === 'admin' && user.role === 'admin' ? <AdminPanel /> : null}
+        <Outlet context={{ refreshKey, bumpFiles: () => setRefreshKey((k) => k + 1) }} />
       </view>
       <view className="flex-row gap-2 pt-4 border-t border-border">
         <view
           className="h-9 flex-1 rounded-md bg-background border border-input items-center justify-center"
           bindtap={logout}
+          aria-label={t('home.log_out')}
         >
           <text className="text-foreground text-sm font-medium">{t('home.log_out')}</text>
         </view>
         <view
           className="h-9 flex-1 rounded-md bg-background border border-input items-center justify-center"
           bindtap={logoutAll}
+          aria-label={t('home.log_out_all')}
         >
           <text className="text-foreground text-sm font-medium">{t('home.log_out_all')}</text>
         </view>
       </view>
     </view>
   )
+}
+
+export function Home() {
+  return (
+    <Routes>
+      <Route element={<Layout />}>
+        <Route path="/" element={<Navigate to="/files" replace />} />
+        <Route path="/files" element={<FilesPanelRoute />} />
+        <Route path="/files/:id" element={<FilesPanelRoute />} />
+        <Route path="/orgs" element={<OrgsPanel />} />
+        <Route path="/orgs/:slug" element={<OrgsPanel />} />
+        <Route path="/trash" element={<TrashPanelRoute />} />
+        <Route path="/audit" element={<AuditPanel />} />
+        <Route path="/settings/*" element={<SettingsPanel />} />
+        <Route path="/admin" element={<AdminPanel />} />
+        <Route path="*" element={<Navigate to="/files" replace />} />
+      </Route>
+    </Routes>
+  )
+}
+
+import { useOutletContext } from 'react-router-dom'
+
+function FilesPanelRoute() {
+  const ctx = useOutletContext<{ refreshKey: number }>()
+  return <FilesPanel refreshKey={ctx.refreshKey} />
+}
+
+function TrashPanelRoute() {
+  const ctx = useOutletContext<{ bumpFiles: () => void }>()
+  return <TrashPanel onRestore={ctx.bumpFiles} />
 }

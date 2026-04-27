@@ -24,13 +24,20 @@
   },
   "tabs": {
     "files": "Tệp",
-    "profile": "Hồ sơ",
     "orgs": "Tổ chức",
     "trash": "Thùng rác",
-    "webhooks": "Webhook",
     "audit": "Kiểm toán",
-    "mfa": "MFA",
+    "settings": "Cài đặt",
     "admin": "Quản trị"
+  },
+  "settings": {
+    "profile": "Hồ sơ",
+    "mfa": "MFA",
+    "webhooks": "Webhook"
+  },
+  "org": {
+    "personal": "Cá nhân",
+    "context_switcher": "Chuyển ngữ cảnh tổ chức"
   },
   "files": {
     "filter_placeholder": "lọc tệp theo tên…",
