@@ -153,11 +153,12 @@ export function Home() {
 }
 
 function FilesPanelRoute() {
-  const ctx = useOutletContext<{ refreshKey: number }>()
-  return <FilesPanel refreshKey={ctx.refreshKey} />
+  const ctx = useOutletContext<{ refreshKey?: number } | null>()
+  return <FilesPanel refreshKey={ctx?.refreshKey ?? 0} />
 }
 
 function TrashPanelRoute() {
-  const ctx = useOutletContext<{ bumpFiles: () => void }>()
-  return <TrashPanel onRestore={ctx.bumpFiles} />
+  const ctx = useOutletContext<{ bumpFiles?: () => void } | null>()
+  const onRestore = ctx?.bumpFiles
+  return onRestore ? <TrashPanel onRestore={onRestore} /> : <TrashPanel />
 }
