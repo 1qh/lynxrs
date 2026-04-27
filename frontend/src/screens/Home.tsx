@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import {
   Routes,
   Route,
-  Navigate,
   Outlet,
   useLocation,
   useNavigate,
@@ -152,7 +151,7 @@ export function Home() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route index element={<Navigate to="/files" replace />} />
+        <Route index element={<FilesView />} />
         <Route path="files" element={<FilesView />} />
         <Route path="files/:id" element={<FilesView />} />
         <Route path="orgs" element={<OrgsPanel />} />
@@ -161,7 +160,7 @@ export function Home() {
         <Route path="audit" element={<AuditPanel />} />
         <Route path="settings/*" element={<SettingsPanel />} />
         <Route path="admin" element={<AdminPanel />} />
-        <Route path="*" element={<Navigate to="/files" replace />} />
+        <Route path="*" element={<FilesView />} />
       </Route>
     </Routes>
   )
