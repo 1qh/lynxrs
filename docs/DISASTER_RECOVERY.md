@@ -1,75 +1,72 @@
-# Disaster Recovery Runbook
+# Disaster Recovery
 
 ## RPO / RTO
 
-| Tier | RPO | RTO |
-|------|-----|-----|
-| Database | 24h (next housekeeping run + backup cadence) | 1h |
-| Object storage | 0 (S3 versioning + cross-region replication once enabled) | 30m |
-| Audit log | 0 for last 90d (in DB), then archived to S3 ndjson | 4h to rebuild verification chain from archive |
+| Tier | RPO | RTO | Notes |
+|---|---|---|---|
+| Postgres (incl. `conversations`, `messages`, `webhook_deliveries`) | 24h | 1h | next housekeeping cron + nightly backup |
+| Object storage (MinIO/S3) | 0 | 30m | requires S3 versioning + CRR (post-spike) |
+| Audit chain | 0 (last 90d in DB) | 4h | rebuild from S3 ndjson archive |
 
 ## Pre-incident
 
-- `just admin-create` an emergency-only break-glass admin (kept in 1Password vault).
-- Verify backups land: every nightly run of `just backup-restore-e2e` should report drift <1%.
-- `cargo deny check` + `cargo audit` run via CI on every PR.
-- Trivy + gitleaks scan the repo + container image on each merge to main.
+```bash
+just admin-create               # break-glass admin → 1Password
+just backup-restore-e2e         # nightly drill, drift <1%
+just audit                      # cargo-audit + cargo-deny on every PR
+```
 
-## Incident playbooks
+Trivy + gitleaks scan repo + image on each merge.
 
-### 1. Database is gone
+## Restore flow
+
+```mermaid
+flowchart TD
+  D{What's gone?} -->|Postgres| P[restore-pg]
+  D -->|Object store| O[restore-s3]
+  D -->|Audit chain tamper| A[replay-chain]
+  D -->|Region| R[manual failover · TBD]
+
+  P --> P1[compose up -d postgres]
+  P1 --> P2[mc cat backups/&lt;ts&gt;.sql.gz | gunzip → psql]
+  P2 --> P3[curl /api/admin/audit/verify]
+
+  O --> O1{S3 versioning on?}
+  O1 -->|yes| O2[restore prior version per u/&lt;uid&gt;/]
+  O1 -->|no| O3[verify via file_objects.sha256<br/>flag affected files in /me/audit]
+
+  A --> A1[mc cp audit-archive/&lt;ts&gt;.ndjson]
+  A1 --> A2[replay genesis → broken_at<br/>compare sha256(prev || canonical)]
+```
+
+### Postgres restore
 
 ```bash
-# 1. Spin a fresh Postgres
 docker compose -f infra/docker-compose.yml up -d postgres
-
-# 2. Locate the latest backup (S3, key prefix `backups/<timestamp>.sql.gz`)
 mc ls local/simu-uploads/backups/ | tail -3
-
-# 3. Restore
-mc cat local/simu-uploads/backups/20260424T193200Z.sql.gz | gunzip > /tmp/restore.sql
+mc cat local/simu-uploads/backups/<ts>.sql.gz | gunzip > /tmp/restore.sql
 docker exec simu-postgres psql -U simu -d simu -f /tmp/restore.sql
-
-# 4. Sanity-check audit chain integrity
 curl -sb cookies http://localhost:8088/api/admin/audit/verify | jq
 ```
 
-### 2. Object storage corrupted / lost
+Restore covers all 37 migrations: users, files, file_versions, shares, tags, stars, comments, audit_log, organizations, webhooks + deliveries, conversations, messages.
 
-- If S3 versioning is on (recommended), restore each prefix `u/{uid}/` from the
-  prior version.
-- If versioning is off: SHA256 in `file_objects.sha256` allows verification per
-  file. Issue user-visible "your file is being recovered" notices via the
-  `/me/audit` UI.
-
-### 3. Audit chain tamper detected
-
-`/admin/audit/verify` returns `ok: false, broken_at: <uuid>`.
+### Audit chain replay
 
 ```bash
-# 1. Pull the archive from S3 cold storage
 mc ls local/simu-uploads/audit-archive/ | tail -10
-mc cp local/simu-uploads/audit-archive/$(date +%Y%m%dT)*.ndjson /tmp/
-
-# 2. Replay the chain from genesis → broken_at, compare hash-by-hash
-# (script TBD; conceptually: foreach line, recompute sha256(prev||canonical))
+mc cp local/simu-uploads/audit-archive/<ts>.ndjson /tmp/
+# foreach line: recompute sha256(prev || canonical_json), compare row_hash
 ```
 
-### 4. Region down
+### Region down
 
-Currently single-region. Multi-region is **not implemented** — accepting RTO of
-hours during regional outage. Roadmap item: enable S3 cross-region replication
-+ Postgres logical replica + failover DNS.
+Single-region today. Multi-region is roadmap (S3 CRR + PG logical replica + DNS failover). Accept hours-RTO during regional outage.
 
 ## Communications
 
-- Status page: roadmap (currently no public status surface).
-- Customer email blast: `just admin-create` then run `INSERT INTO outbox …`
-  (mailer batches via housekeeping).
+Status page: roadmap. Email blast: `just admin-create` + `INSERT INTO outbox …` (mailer batches via housekeeping).
 
 ## Post-incident
 
-- Write a 5-whys in `docs/incidents/YYYY-MM-DD.md`.
-- File a follow-up to remove whatever made the failure possible.
-- Run `just backup-restore-e2e` to confirm recovery process actually works
-  before declaring incident closed.
+Write 5-whys at `docs/incidents/YYYY-MM-DD.md` · file follow-up to remove the cause · `just backup-restore-e2e` before declaring closed.

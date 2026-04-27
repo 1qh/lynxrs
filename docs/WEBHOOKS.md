@@ -1,93 +1,60 @@
-# Webhook receivers — verify your simu signature
+# Webhooks — receiver verification
 
-Every outbound webhook from simu carries an HMAC-SHA256 signature in the
-`x-simu-signature` header. Verify it before trusting the body.
+Outbound webhooks carry HMAC-SHA256 in `x-simu-signature`. Verify before trusting the body.
 
-## Header layout
+## Headers
 
+| Header | Value |
+|---|---|
+| `x-simu-signature` | `sha256=<hex digest>` over `{timestamp}.{raw_body}` |
+| `x-simu-timestamp` | unix seconds — reject if skew > 300s |
+| `x-simu-event` | `file_created` · `file_deleted` · … |
+| `x-simu-delivery` | uuid v7 (sortable) — idempotency key |
+
+## Dispatch lifecycle
+
+```mermaid
+flowchart LR
+  Evt[event on bus] --> Ser[serialize JSON]
+  Ser --> Sig["sign:<br/>HMAC_SHA256(secret, ts || '.' || body)"]
+  Sig --> Send[POST receiver]
+  Send -->|2xx| Done[delivery: ok]
+  Send -->|fail| BO{attempts < 5?}
+  BO -->|yes| Wait[backoff: 2^n seconds] --> Send
+  BO -->|no| Dead[delivery: failed<br/>row in webhook_deliveries]
+  Dead --> Disable{fail_count ≥ N?}
+  Disable -->|yes| Off[auto-disable webhook]
 ```
-x-simu-signature: sha256=<hex digest>
-x-simu-timestamp: <unix seconds>
-x-simu-event:     file_created | file_deleted | …
-x-simu-delivery:  <uuid>
-```
 
-The signed payload is `{timestamp}.{raw_body}`. Replay attacks are mitigated
-by rejecting requests with timestamps more than 300 seconds in the past.
+Delivery log lives in `webhook_deliveries` (migration `m20260424_000019`). Query via `GET /api/webhooks/{id}/deliveries`.
 
-## Reference receivers
-
-### Node (TypeScript)
+## Reference verifier (Node)
 
 ```ts
 import crypto from 'node:crypto'
 
-function verify(req: Request, secret: string, rawBody: Buffer): boolean {
-  const sig = req.headers['x-simu-signature'] as string | undefined
-  const ts = req.headers['x-simu-timestamp'] as string | undefined
+function verify(headers: Record<string, string>, secret: string, rawBody: Buffer): boolean {
+  const sig = headers['x-simu-signature']
+  const ts = headers['x-simu-timestamp']
   if (!sig?.startsWith('sha256=') || !ts) return false
   if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false
 
-  const expected = crypto
-    .createHmac('sha256', secret)
+  const expected = crypto.createHmac('sha256', secret)
     .update(`${ts}.${rawBody.toString('utf8')}`)
     .digest('hex')
 
-  // Constant-time compare
   const a = Buffer.from(sig.slice(7), 'hex')
   const b = Buffer.from(expected, 'hex')
   return a.length === b.length && crypto.timingSafeEqual(a, b)
 }
 ```
 
-### Python (FastAPI)
+Python and Rust receivers follow the same shape: strip `sha256=`, check timestamp skew, recompute HMAC over `${ts}.${body}`, constant-time compare.
 
-```python
-import hmac, hashlib, time
+## Idempotency
 
-def verify(request, secret: str, raw_body: bytes) -> bool:
-    sig = request.headers.get("x-simu-signature", "")
-    ts  = request.headers.get("x-simu-timestamp", "")
-    if not sig.startswith("sha256=") or not ts.isdigit():
-        return False
-    if abs(int(time.time()) - int(ts)) > 300:
-        return False
-    expected = hmac.new(
-        secret.encode(),
-        f"{ts}.{raw_body.decode('utf-8')}".encode(),
-        hashlib.sha256,
-    ).hexdigest()
-    return hmac.compare_digest(sig[7:], expected)
-```
-
-### Rust (axum receiver)
-
-```rust
-use hmac::{Hmac, Mac, KeyInit};
-use sha2::Sha256;
-
-fn verify(secret: &str, ts: &str, sig_header: &str, body: &[u8]) -> bool {
-    let Some(hex_sig) = sig_header.strip_prefix("sha256=") else { return false };
-    let now = chrono::Utc::now().timestamp();
-    let Ok(ts_i) = ts.parse::<i64>() else { return false };
-    if (now - ts_i).abs() > 300 { return false }
-
-    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
-    mac.update(ts.as_bytes());
-    mac.update(b".");
-    mac.update(body);
-    let Ok(provided) = hex::decode(hex_sig) else { return false };
-    mac.verify_slice(&provided).is_ok()
-}
-```
-
-## When to retry
-
-simu retries failed deliveries with exponential backoff up to 5 attempts. To
-be idempotent, key your handler on `x-simu-delivery` (a uuid v7 — sortable).
+Key on `x-simu-delivery`. Retries reuse the delivery uuid — your handler sees the same id.
 
 ## Rotation
 
-Rotate the per-webhook secret by issuing `POST /api/webhooks/{id}/rotate`
-(coming soon). Until then, delete + recreate the webhook to invalidate the
-old secret.
+`POST /api/webhooks/{id}/rotate` — coming soon. Until then: delete + recreate to invalidate the old secret.

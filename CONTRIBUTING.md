@@ -2,47 +2,36 @@
 
 ## Commits
 
-Conventional-commit style: `type(scope): short summary`.
+`type(scope): summary` — types: `feat` `fix` `test` `chore` `docs` `refactor` `perf`. Scopes: `backend` `frontend` `infra` `ci` `ops` `docs`. Small, revertable. **Never** `Co-Authored-By` footers.
 
-Types: `feat`, `fix`, `test`, `chore`, `docs`, `refactor`, `perf`.
-Scopes we use: `backend`, `frontend`, `infra`, `ci`, `ops`, `docs`.
+## Workflow
 
-Keep commits small and focused — one feature or fix per commit. Rework freely;
-prefer small revert-able steps over a single large commit.
-
-## Before commit
-
-```bash
-just lint     # cargo fmt --check + cargo clippy -D warnings
-just backend-test
-just e2e
-just audit    # cargo-audit + cargo-deny
+```mermaid
+flowchart LR
+  A[branch off main] --> B[code + test]
+  B --> C[just lint]
+  C --> D[just backend-test]
+  D --> E[just e2e]
+  E --> F[just audit]
+  F --> G[commit]
+  G --> H[PR · review · squash]
 ```
 
-Pre-commit hook (via `pre-commit install`) runs gitleaks + fmt + clippy + tsc automatically.
+Pre-commit hook (`pre-commit install`) runs gitleaks + fmt + clippy + tsc.
 
-## Dependencies
+## Hard rules
 
-Every new dependency must satisfy:
+| Rule | Why |
+|---|---|
+| Bun only on TS/JS | no npm/pnpm/yarn/node — single toolchain |
+| Latest-only | no polyfills, no BC shims, target newest OS/SDK |
+| Deps ≤6 months | active, language-native, pinned `=x.y.z`, lockfile committed |
+| `git init` step 0 | commit every milestone |
+| Regression test per fix | every new endpoint → ≥1 E2E |
+| `.env` gitignored | gitleaks gates CI + pre-commit; leak = rotate + rewrite |
 
-1. Actively maintained — last release within 6 months.
-2. Native to its language — pure Rust or pure TS; no wrappers unless no native alternative.
-3. Pinned exact version (`=x.y.z`) with lockfile committed.
-
-Verify: release date on crates.io or npm before adding. Waivers go in `backend/deny.toml`.
-
-## Tests
-
-- Backend: `tests/property.rs` (proptest) + `tests/integration.rs` (testcontainers).
-- Frontend: `e2e/*.spec.ts` (Playwright, hits live backend + Rspeedy preview).
-
-Every bug fix ships with a regression test. Every new endpoint gets at least one E2E.
+Waivers go in `backend/deny.toml`. Verify release date on crates.io / npm before adding.
 
 ## Branching
 
-`main` is protected. Work in feature branches → PR → review → squash.
-
-## Secrets
-
-`.env` files are gitignored; `.env.example` shows the shape.
-`gitleaks` runs in CI + pre-commit. Any secret in history = rotate + rewrite.
+`main` is protected. Feature branch → PR → squash.
