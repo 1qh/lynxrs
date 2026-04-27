@@ -1,5 +1,6 @@
-import { useCallback, useState } from '@lynx-js/react'
+import { useCallback, useEffect, useState } from '@lynx-js/react'
 import { useTranslation } from 'react-i18next'
+import QRCode from 'qrcode'
 import { api } from '../../api/client.js'
 import { useAuth } from '../../state/auth.js'
 import { reportError } from '../../state/toast.js'
@@ -9,8 +10,18 @@ export function MfaPanel() {
   const user = useAuth((s) => s.user)!
   const setUser = useAuth((s) => s.setUser)
   const [mfaSecret, setMfaSecret] = useState<string | null>(null)
+  const [mfaQr, setMfaQr] = useState<string | null>(null)
   const [mfaCode, setMfaCode] = useState('')
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
+
+  // Render the otpauth:// URI as a QR PNG data-URL whenever the secret changes.
+  useEffect(() => {
+    if (!mfaSecret) { setMfaQr(null); return }
+    const issuer = encodeURIComponent('simu')
+    const label = encodeURIComponent(`simu:${user.email}`)
+    const otpauth = `otpauth://totp/${label}?secret=${mfaSecret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`
+    void QRCode.toDataURL(otpauth, { margin: 1, width: 220 }).then(setMfaQr).catch(() => setMfaQr(null))
+  }, [mfaSecret, user.email])
 
   const enroll = useCallback(async () => {
     const { data, error } = await api.POST('/mfa/enroll', {})
@@ -47,8 +58,11 @@ export function MfaPanel() {
           </text>
         </view>
         {mfaSecret ? (
-          <view className="rounded-md bg-card border border-border p-3 gap-2">
+          <view className="rounded-md bg-card border border-border p-3 gap-2 items-center">
             <text className="text-sm text-muted-foreground">{t('mfa.scan')}</text>
+            {mfaQr ? (
+              <image src={mfaQr} className="w-[220px] h-[220px] rounded-md bg-white" />
+            ) : null}
             <text className="text-foreground text-sm font-mono">{mfaSecret}</text>
             <input
               className="h-10 rounded-md bg-background text-foreground px-3 text-sm border border-input"

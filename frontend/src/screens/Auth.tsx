@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from '@lynx-js/react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.js'
 import { useAuth, type User } from '../state/auth.js'
+import { passwordStrength } from '../lib/passwordStrength.js'
 
 export function AuthForm() {
   const { t } = useTranslation()
@@ -9,8 +10,10 @@ export function AuthForm() {
   const [mode, setMode] = useState<'login' | 'signup'>('signup')
   const emailRef = useRef('demo@simu.dev')
   const passwordRef = useRef('hunter2hunter2')
+  const [pwLive, setPwLive] = useState('hunter2hunter2')
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const strength = passwordStrength(pwLive)
 
   const submit = useCallback(async () => {
     setErr(null)
@@ -58,8 +61,28 @@ export function AuthForm() {
         className="h-10 rounded-md bg-background text-foreground px-3 text-sm border border-input"
         placeholder={t('auth.password')}
         type="password"
-        bindinput={(e: { detail: { value: string } }) => { passwordRef.current = e.detail.value }}
+        bindinput={(e: { detail: { value: string } }) => {
+          passwordRef.current = e.detail.value
+          setPwLive(e.detail.value)
+        }}
       />
+      {mode === 'signup' ? (
+        <view className="flex-row gap-1 h-1">
+          {[0, 1, 2, 3].map((i) => (
+            <view
+              key={i}
+              className={
+                i < strength.score
+                  ? 'flex-1 rounded-full bg-primary'
+                  : 'flex-1 rounded-full bg-muted'
+              }
+            />
+          ))}
+        </view>
+      ) : null}
+      {mode === 'signup' && pwLive.length > 0 ? (
+        <text className="text-xs text-muted-foreground">{strength.label}</text>
+      ) : null}
       {err ? <text className="text-destructive text-sm">{err}</text> : null}
       <view
         className="h-10 rounded-md bg-primary items-center justify-center"
