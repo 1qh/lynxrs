@@ -20,105 +20,18 @@ import { OrgsPanel } from './panels/OrgsPanel.js'
 import { TrashPanel } from './panels/TrashPanel.js'
 import { AuditPanel } from './panels/AuditPanel.js'
 
-type TabSpec = { path: string; labelKey: string; adminOnly?: boolean }
-
-function TabBar({
-  tabs,
-  active,
-  onPick,
-}: {
-  tabs: ReadonlyArray<TabSpec>
-  active: string
-  onPick: (p: string) => void
-}) {
-  const { t } = useTranslation()
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const activeTab = tabs.find((tb) => active.startsWith(tb.path)) ?? tabs[0]!
-  return (
-    <>
-      {/* >= sm: horizontal tab bar */}
-      <view className="hidden sm:flex flex-row flex-wrap gap-1 py-2 border-b border-border">
-        {tabs.map((tb) => {
-          const a = active.startsWith(tb.path)
-          return (
-            <view
-              key={tb.path}
-              className={
-                a
-                  ? 'rounded-md px-3 py-1.5 bg-primary'
-                  : 'rounded-md px-3 py-1.5 bg-transparent'
-              }
-              bindtap={() => onPick(tb.path)}
-              aria-label={t(tb.labelKey)}
-            >
-              <text
-                className={
-                  a
-                    ? 'text-primary-foreground text-sm font-medium'
-                    : 'text-muted-foreground text-sm font-medium'
-                }
-              >
-                {t(tb.labelKey)}
-              </text>
-            </view>
-          )
-        })}
-      </view>
-      {/* < sm: drawer trigger + drawer */}
-      <view className="flex sm:hidden flex-row items-center justify-between py-2 border-b border-border">
-        <view
-          className="h-9 rounded-md bg-secondary border border-border items-center justify-center px-3"
-          bindtap={() => setDrawerOpen(true)}
-          aria-label="open menu"
-        >
-          <text className="text-secondary-foreground text-sm font-medium">☰ {t(activeTab.labelKey)}</text>
-        </view>
-      </view>
-      {drawerOpen ? (
-        <view
-          className="fixed inset-0 bg-background/80 z-[8500]"
-          bindtap={() => setDrawerOpen(false)}
-        >
-          <view className="absolute left-0 top-0 bottom-0 w-[260px] bg-card border-r border-border p-4 gap-1">
-            {tabs.map((tb) => {
-              const a = active.startsWith(tb.path)
-              return (
-                <view
-                  key={tb.path}
-                  className={
-                    a
-                      ? 'h-10 rounded-md bg-primary items-center justify-center px-3'
-                      : 'h-10 rounded-md bg-transparent items-center justify-center px-3'
-                  }
-                  bindtap={() => { onPick(tb.path); setDrawerOpen(false) }}
-                  aria-label={t(tb.labelKey)}
-                >
-                  <text
-                    className={
-                      a
-                        ? 'text-primary-foreground text-sm font-medium'
-                        : 'text-foreground text-sm font-medium'
-                    }
-                  >
-                    {t(tb.labelKey)}
-                  </text>
-                </view>
-              )
-            })}
-          </view>
-        </view>
-      ) : null}
-    </>
-  )
-}
+type TabSpec = { path: string; labelKey: string; glyph: string; adminOnly?: boolean }
 
 const TABS: ReadonlyArray<TabSpec> = [
-  { path: '/files', labelKey: 'tabs.files' },
-  { path: '/orgs', labelKey: 'tabs.orgs' },
-  { path: '/trash', labelKey: 'tabs.trash' },
-  { path: '/audit', labelKey: 'tabs.audit' },
-  { path: '/settings', labelKey: 'tabs.settings' },
-  { path: '/admin', labelKey: 'tabs.admin', adminOnly: true },
+  { path: '/files', labelKey: 'tabs.files', glyph: '📁' },
+  { path: '/orgs', labelKey: 'tabs.orgs', glyph: '🏢' },
+  { path: '/audit', labelKey: 'tabs.audit', glyph: '📊' },
+  { path: '/settings', labelKey: 'tabs.settings', glyph: '⚙' },
+]
+
+const SECONDARY_TABS: ReadonlyArray<TabSpec> = [
+  { path: '/trash', labelKey: 'tabs.trash', glyph: '🗑' },
+  { path: '/admin', labelKey: 'tabs.admin', glyph: '🛡', adminOnly: true },
 ]
 
 function Layout() {
@@ -128,6 +41,7 @@ function Layout() {
   const loc = useLocation()
   const navigate = useNavigate()
   const bump = useFilesState((s) => s.bump)
+  const [moreOpen, setMoreOpen] = useState(false)
 
   useEvents(['file_created', 'file_deleted'], bump)
 
@@ -147,54 +61,114 @@ function Layout() {
     setUser(null)
   }, [setUser])
 
-  const logoutAll = useCallback(async () => {
-    await api.POST('/auth/logout-all', {})
-    setUser(null)
-  }, [setUser])
-
   const resend = useCallback(async () => {
     await api.POST('/auth/email/resend', {})
   }, [])
 
-  const visibleTabs = TABS.filter((tb) => !tb.adminOnly || user.role === 'admin')
+  const visibleSecondary = SECONDARY_TABS.filter(
+    (tb) => !tb.adminOnly || user.role === 'admin',
+  )
 
   return (
-    <view className="gap-4">
-      <view className="flex-row items-center justify-between gap-2">
-        <text className="flex-1 text-base font-medium text-foreground" aria-label={`signed in as ${user.email}`}>
-          {t('home.hello', { email: user.email })}
-        </text>
+    <view className="h-full">
+      {/* Sub-header: identity + org switcher */}
+      <view className="flex-row items-center justify-between px-4 py-3 gap-2 border-b border-border">
+        <view className="flex-1 gap-0.5">
+          <text className="text-sm font-medium text-foreground" aria-label={`signed in as ${user.email}`}>
+            {user.display_name ?? user.email}
+          </text>
+          {!user.email_verified ? (
+            <text className="text-[11px] text-warn" bindtap={resend} aria-label={t('home.email_not_verified')}>
+              ⚠ {t('home.email_not_verified')}
+            </text>
+          ) : null}
+        </view>
         <OrgContextSwitcher />
       </view>
-      {!user.email_verified ? (
-        <view
-          className="rounded-md bg-secondary border border-border px-3 py-2"
-          bindtap={resend}
-          aria-label={t('home.email_not_verified')}
-        >
-          <text className="text-secondary-foreground text-[13px]">
-            {t('home.email_not_verified')}
-          </text>
-        </view>
-      ) : null}
-      <TabBar tabs={visibleTabs} active={loc.pathname} onPick={(p) => navigate(p)} />
-      <view className="py-2 gap-3">
+
+      {/* Scrollable content */}
+      <view className="flex-1 overflow-auto px-4 py-3 gap-3">
         <Outlet />
+        {/* Secondary actions tucked at bottom of body */}
+        {moreOpen ? (
+          <view className="rounded-md bg-card border border-border p-3 gap-2">
+            {visibleSecondary.map((tb) => {
+              const a = loc.pathname.startsWith(tb.path)
+              return (
+                <view
+                  key={tb.path}
+                  className={
+                    a
+                      ? 'flex-row items-center gap-3 rounded-md bg-primary px-3 py-2'
+                      : 'flex-row items-center gap-3 rounded-md bg-transparent px-3 py-2'
+                  }
+                  bindtap={() => { navigate(tb.path); setMoreOpen(false) }}
+                  aria-label={t(tb.labelKey)}
+                >
+                  <text className="text-base">{tb.glyph}</text>
+                  <text
+                    className={
+                      a
+                        ? 'text-primary-foreground text-sm font-medium'
+                        : 'text-foreground text-sm font-medium'
+                    }
+                  >
+                    {t(tb.labelKey)}
+                  </text>
+                </view>
+              )
+            })}
+            <view
+              className="flex-row items-center gap-3 rounded-md bg-transparent px-3 py-2"
+              bindtap={() => void logout()}
+              aria-label={t('home.log_out')}
+            >
+              <text className="text-base">🚪</text>
+              <text className="text-foreground text-sm font-medium">{t('home.log_out')}</text>
+            </view>
+          </view>
+        ) : null}
       </view>
-      <view className="flex-row gap-2 pt-4 border-t border-border">
+
+      {/* Bottom tab bar — iOS/Android-style */}
+      <view className="flex-row items-stretch border-t border-border bg-background">
+        {TABS.map((tb) => {
+          const active = loc.pathname.startsWith(tb.path)
+          return (
+            <view
+              key={tb.path}
+              className="flex-1 items-center justify-center py-2 gap-0.5"
+              bindtap={() => { navigate(tb.path); setMoreOpen(false) }}
+              aria-label={t(tb.labelKey)}
+            >
+              <text className={active ? 'text-lg' : 'text-lg opacity-60'}>{tb.glyph}</text>
+              <text
+                className={
+                  active
+                    ? 'text-[11px] font-medium text-primary'
+                    : 'text-[11px] font-medium text-muted-foreground'
+                }
+              >
+                {t(tb.labelKey)}
+              </text>
+            </view>
+          )
+        })}
         <view
-          className="h-9 flex-1 rounded-md bg-background border border-input items-center justify-center"
-          bindtap={logout}
-          aria-label={t('home.log_out')}
+          className="flex-1 items-center justify-center py-2 gap-0.5"
+          bindtap={() => setMoreOpen((v) => !v)}
+          aria-label="more"
         >
-          <text className="text-foreground text-sm font-medium">{t('home.log_out')}</text>
-        </view>
-        <view
-          className="h-9 flex-1 rounded-md bg-background border border-input items-center justify-center"
-          bindtap={logoutAll}
-          aria-label={t('home.log_out_all')}
-        >
-          <text className="text-foreground text-sm font-medium">{t('home.log_out_all')}</text>
+          <text className={moreOpen ? 'text-lg' : 'text-lg opacity-60'}>···</text>
+          <text
+            className={
+              moreOpen
+                ? 'text-[11px] font-medium text-primary'
+                : 'text-[11px] font-medium text-muted-foreground'
+            }
+          >
+            More
+          </text>
         </view>
       </view>
     </view>

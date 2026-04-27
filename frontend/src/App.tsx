@@ -30,7 +30,7 @@ export function App() {
 
   if (boot) {
     return (
-      <view className="w-full h-full bg-background items-center justify-center p-5">
+      <view className="w-full h-full bg-background items-center justify-center">
         <text className="text-muted-foreground text-sm">{t('app.loading')}</text>
       </view>
     )
@@ -38,21 +38,27 @@ export function App() {
 
   return (
     <CrossRouter>
-      <view className="w-full min-h-full bg-background items-center justify-start p-5 sm:p-8">
-        <view className="w-full max-w-[640px] bg-card rounded-lg p-6 sm:p-8 border border-border">
-          <view className="flex-row items-center justify-between mb-6">
-            <view className="flex-row items-center gap-2">
-              <Logo size={28} />
-              <text className="text-[28px] font-semibold text-foreground tracking-tight">
-                {t('app.title')}
-              </text>
-            </view>
-            <view className="flex-row gap-2">
-              <ThemeSwitcher />
-              <LangSwitcher />
-            </view>
+      {/* Vertical mobile-app shell. Header, scrolling body, optional bottom
+          tab bar (rendered inside Home). Full-bleed within the phone frame. */}
+      <view className="w-full h-full bg-background">
+        <view className="flex-row items-center justify-between px-4 py-3 border-b border-border bg-background">
+          <view className="flex-row items-center gap-2">
+            <Logo size={22} />
+            <text className="text-base font-semibold text-foreground tracking-tight">
+              {t('app.title')}
+            </text>
           </view>
-          {user ? <Home /> : <AuthForm />}
+          <view className="flex-row gap-2">
+            <ThemeSwitcher />
+            <LangSwitcher />
+          </view>
+        </view>
+        <view className="flex-1 overflow-auto">
+          {user ? <Home /> : (
+            <view className="px-4 py-6">
+              <AuthForm />
+            </view>
+          )}
         </view>
         <Toasts />
         <ShortcutsHelp />
