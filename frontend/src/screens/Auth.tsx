@@ -20,14 +20,19 @@ export function AuthForm() {
   const strength = passwordStrength(pwLive)
 
   // Probe which OAuth providers the backend has configured. Endpoint is
-  // unauthenticated and cheap.
+  // unauthenticated. Guarded against runtimes where global fetch is absent
+  // (some Lynx target shells) — failure just hides the OAuth section.
   useEffect(() => {
-    const base =
-      (import.meta.env?.PUBLIC_API_BASE as string | undefined) ?? 'http://localhost:8088'
-    void fetch(`${base}/api/oauth/status`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) setOauth(d as typeof oauth) })
-      .catch(() => {})
+    try {
+      const f = (globalThis as { fetch?: typeof fetch }).fetch
+      if (!f) return
+      const base =
+        (import.meta.env?.PUBLIC_API_BASE as string | undefined) ?? 'http://localhost:8088'
+      void f(`${base}/api/oauth/status`, { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (d) setOauth(d as typeof oauth) })
+        .catch(() => {})
+    } catch {}
   }, [])
 
   const startOauth = (provider: 'google' | 'github') => {
