@@ -145,59 +145,94 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
 
   return (
     <view>
-      <view className="Button" bindtap={busy ? undefined : pickAndUpload}>
-        <text className="ButtonText">{busy ? t('files.uploading') : t('files.upload_file')}</text>
+      <view
+        className="h-11 rounded-[10px] bg-accent items-center justify-center mt-1"
+        bindtap={busy ? undefined : pickAndUpload}
+      >
+        <text className="text-white text-base font-semibold">
+          {busy ? t('files.uploading') : t('files.upload_file')}
+        </text>
       </view>
-      <view className="Button ButtonGhost" bindtap={busy ? undefined : uploadSample}>
-        <text className="ButtonText">{t('files.upload_sample')}</text>
+      <view
+        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+        bindtap={busy ? undefined : uploadSample}
+      >
+        <text className="text-white text-base font-semibold">{t('files.upload_sample')}</text>
       </view>
       <input
-        className="Input"
+        className="h-11 rounded-[10px] bg-card text-white px-3.5 text-base border border-border"
         placeholder={t('files.filter_placeholder')}
         type="text"
         bindinput={(e: { detail: { value: string } }) => setQuery(e.detail.value)}
       />
-      <view className="FileList">
+      <view className="mt-3 gap-2">
         {loading ? (
-          <text className="Muted">{t('files.loading')}</text>
+          <text className="text-muted text-sm py-2.5">{t('files.loading')}</text>
         ) : files.length === 0 ? (
-          <text className="Muted">{t('files.no_files')}</text>
+          <text className="text-muted text-sm py-2.5">{t('files.no_files')}</text>
         ) : (
           files
             .filter((f) =>
               query.trim() ? f.filename.toLowerCase().includes(query.trim().toLowerCase()) : true,
             )
             .map((f) => (
-            <view key={f.id} className="FileRow">
-              <text className="FileName" bindtap={() => void share(f.id)}>{f.filename}</text>
-              <text className="FileMeta">{f.size_bytes}B · {f.content_type}</text>
-              {f.description ? <text className="Muted">{f.description}</text> : null}
-              <view className="Button ButtonGhost" bindtap={() => void toggleStar(f.id)}>
-                <text className="ButtonText">⭐</text>
+              <view key={f.id} className="bg-card rounded-[10px] p-3 gap-1">
+                <text
+                  className="text-white text-[15px] font-medium"
+                  bindtap={() => void share(f.id)}
+                >
+                  {f.filename}
+                </text>
+                <text className="text-muted text-xs">
+                  {f.size_bytes}B · {f.content_type}
+                </text>
+                {f.description ? (
+                  <text className="text-muted text-sm py-2.5">{f.description}</text>
+                ) : null}
+                <view
+                  className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+                  bindtap={() => void toggleStar(f.id)}
+                >
+                  <text className="text-white text-base font-semibold">⭐</text>
+                </view>
+                <view
+                  className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+                  bindtap={() => setDescEdit({ id: f.id, text: f.description ?? '' })}
+                >
+                  <text className="text-white text-base font-semibold">{t('files.describe')}</text>
+                </view>
               </view>
-              <view className="Button ButtonGhost" bindtap={() => setDescEdit({ id: f.id, text: f.description ?? '' })}>
-                <text className="ButtonText">{t('files.describe')}</text>
-              </view>
-            </view>
-          ))
+            ))
         )}
       </view>
-      {shareUrl ? <text className="Muted">{t('files.share_label', { url: shareUrl })}</text> : null}
-      <view className="Button ButtonGhost" bindtap={refreshStarred}>
-        <text className="ButtonText">{t('files.load_starred', { count: starred.length })}</text>
+      {shareUrl ? (
+        <text className="text-muted text-sm py-2.5">
+          {t('files.share_label', { url: shareUrl })}
+        </text>
+      ) : null}
+      <view
+        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+        bindtap={refreshStarred}
+      >
+        <text className="text-white text-base font-semibold">
+          {t('files.load_starred', { count: starred.length })}
+        </text>
       </view>
       {descEdit ? (
-        <view className="DescEdit">
+        <view>
           <input
-            className="Input"
+            className="h-11 rounded-[10px] bg-card text-white px-3.5 text-base border border-border"
             placeholder={t('files.description_placeholder')}
             type="text"
             bindinput={(e: { detail: { value: string } }) =>
               setDescEdit({ id: descEdit.id, text: e.detail.value })
             }
           />
-          <view className="Button" bindtap={saveDescribe}>
-            <text className="ButtonText">{t('files.save_description')}</text>
+          <view
+            className="h-11 rounded-[10px] bg-accent items-center justify-center mt-1"
+            bindtap={saveDescribe}
+          >
+            <text className="text-white text-base font-semibold">{t('files.save_description')}</text>
           </view>
         </view>
       ) : null}

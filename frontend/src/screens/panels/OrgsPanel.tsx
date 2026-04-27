@@ -42,37 +42,49 @@ export function OrgsPanel() {
 
   return (
     <view>
-      <view className="Button ButtonGhost" bindtap={refresh}>
-        <text className="ButtonText">{t('orgs.load', { count: orgs.length })}</text>
+      <view
+        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+        bindtap={refresh}
+      >
+        <text className="text-white text-base font-semibold">
+          {t('orgs.load', { count: orgs.length })}
+        </text>
       </view>
       <input
-        className="Input"
+        className="h-11 rounded-[10px] bg-card text-white px-3.5 text-base border border-border"
         placeholder={t('orgs.name_placeholder')}
         type="text"
         bindinput={(e: { detail: { value: string } }) => setOrgName(e.detail.value)}
       />
       <input
-        className="Input"
+        className="h-11 rounded-[10px] bg-card text-white px-3.5 text-base border border-border"
         placeholder={t('orgs.slug_placeholder')}
         type="text"
         bindinput={(e: { detail: { value: string } }) => setOrgSlug(e.detail.value)}
       />
-      <view className="Button ButtonGhost" bindtap={create}>
-        <text className="ButtonText">{t('orgs.create')}</text>
+      <view
+        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+        bindtap={create}
+      >
+        <text className="text-white text-base font-semibold">{t('orgs.create')}</text>
       </view>
       {orgs.length > 0 ? (
-        <view className="OrgList">
+        <view className="mt-3 gap-2">
           {orgs.map((o) => (
-            <view key={o.id} className="OrgRow" bindtap={() => void openDetail(o.id)}>
-              <text className="FileName">{o.name}</text>
-              <text className="Muted"> · {o.slug}</text>
+            <view
+              key={o.id}
+              className="bg-card rounded-[10px] p-3 gap-1"
+              bindtap={() => void openDetail(o.id)}
+            >
+              <text className="text-white text-[15px] font-medium">{o.name}</text>
+              <text className="text-muted text-sm py-2.5"> · {o.slug}</text>
             </view>
           ))}
         </view>
       ) : null}
       {orgDetail ? (
-        <view className="OrgDetail">
-          <text className="Muted">
+        <view className="mt-3">
+          <text className="text-muted text-sm py-2.5">
             {orgDetail.stats
               ? t('orgs.detail_summary', {
                   id: orgDetail.id.slice(0, 8),
@@ -83,7 +95,9 @@ export function OrgsPanel() {
               : `${orgDetail.id.slice(0, 8)}…`}
           </text>
           {(orgDetail.members ?? []).map((m, i) => (
-            <text key={i} className="Muted">· {m.email} ({m.role})</text>
+            <text key={i} className="text-muted text-sm py-2.5">
+              · {m.email} ({m.role})
+            </text>
           ))}
         </view>
       ) : null}

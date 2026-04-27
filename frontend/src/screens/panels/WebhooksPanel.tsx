@@ -32,32 +32,43 @@ export function WebhooksPanel() {
 
   return (
     <view>
-      <view className="Button ButtonGhost" bindtap={refresh}>
-        <text className="ButtonText">{t('webhooks.load')}</text>
+      <view
+        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+        bindtap={refresh}
+      >
+        <text className="text-white text-base font-semibold">{t('webhooks.load')}</text>
       </view>
       {webhooks.length > 0 ? (
-        <view className="WebhookList">
+        <view className="mt-3 gap-2">
           {webhooks.map((w) => (
-            <view key={w.id} className="WebhookRow">
-              <text className="WebhookUrl">{w.url}</text>
-              <view className="Button ButtonGhost" bindtap={() => void revoke(w.id)}>
-                <text className="ButtonText">{t('webhooks.revoke')}</text>
+            <view key={w.id} className="bg-card rounded-[10px] p-3 gap-1">
+              <text className="text-white text-[15px] font-medium">{w.url}</text>
+              <view
+                className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+                bindtap={() => void revoke(w.id)}
+              >
+                <text className="text-white text-base font-semibold">{t('webhooks.revoke')}</text>
               </view>
             </view>
           ))}
         </view>
       ) : null}
       <input
-        className="Input"
+        className="h-11 rounded-[10px] bg-card text-white px-3.5 text-base border border-border"
         placeholder={t('webhooks.url_placeholder')}
         type="text"
         bindinput={(e: { detail: { value: string } }) => setWebhookUrl(e.detail.value)}
       />
-      <view className="Button" bindtap={create}>
-        <text className="ButtonText">{t('webhooks.register')}</text>
+      <view
+        className="h-11 rounded-[10px] bg-accent items-center justify-center mt-1"
+        bindtap={create}
+      >
+        <text className="text-white text-base font-semibold">{t('webhooks.register')}</text>
       </view>
       {webhookSecret ? (
-        <text className="Muted">{t('webhooks.secret_once', { secret: webhookSecret })}</text>
+        <text className="text-muted text-sm py-2.5">
+          {t('webhooks.secret_once', { secret: webhookSecret })}
+        </text>
       ) : null}
     </view>
   )

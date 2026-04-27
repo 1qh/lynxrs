@@ -44,29 +44,36 @@ export function AuthForm() {
   }, [mode, setUser, t])
 
   return (
-    <view className="Card">
-      <text className="H2">{mode === 'signup' ? t('auth.create_account') : t('auth.login')}</text>
+    <view className="gap-3 p-1">
+      <text className="text-xl font-semibold text-white mb-2">
+        {mode === 'signup' ? t('auth.create_account') : t('auth.login')}
+      </text>
       <input
-        className="Input"
+        className="h-11 rounded-[10px] bg-card text-white px-3.5 text-base border border-border"
         placeholder={t('auth.email')}
         type="email"
         bindinput={(e: { detail: { value: string } }) => { emailRef.current = e.detail.value }}
       />
       <input
-        className="Input"
+        className="h-11 rounded-[10px] bg-card text-white px-3.5 text-base border border-border"
         placeholder={t('auth.password')}
         type="password"
         bindinput={(e: { detail: { value: string } }) => { passwordRef.current = e.detail.value }}
       />
-      {err ? <text className="Error">{err}</text> : null}
-      <view className="Button" bindtap={busy ? undefined : submit}>
-        <text className="ButtonText">{busy ? '…' : mode === 'signup' ? t('auth.sign_up') : t('auth.log_in')}</text>
+      {err ? <text className="text-danger text-sm">{err}</text> : null}
+      <view
+        className="h-11 rounded-[10px] bg-accent items-center justify-center mt-1"
+        bindtap={busy ? undefined : submit}
+      >
+        <text className="text-white text-base font-semibold">
+          {busy ? '…' : mode === 'signup' ? t('auth.sign_up') : t('auth.log_in')}
+        </text>
       </view>
       <view
-        className="SwitchRow"
+        className="items-center p-2.5"
         bindtap={() => setMode(mode === 'signup' ? 'login' : 'signup')}
       >
-        <text className="SwitchText">
+        <text className="text-[#8aa2ff] text-sm">
           {mode === 'signup' ? t('auth.have_account') : t('auth.new_here')}
         </text>
       </view>

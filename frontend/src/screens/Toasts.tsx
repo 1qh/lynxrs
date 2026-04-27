@@ -5,14 +5,18 @@ export function Toasts() {
   const dismiss = useToasts((s) => s.dismiss)
   if (toasts.length === 0) return null
   return (
-    <view className="ToastStack">
+    <view className="fixed bottom-5 right-5 gap-2 z-[9999]">
       {toasts.map((t) => (
         <view
           key={t.id}
-          className={t.kind === 'error' ? 'Toast ToastError' : 'Toast ToastInfo'}
+          className={
+            t.kind === 'error'
+              ? 'rounded-lg px-4 py-3 max-w-[360px] bg-[#4a1a20] border border-[#8a3340]'
+              : 'rounded-lg px-4 py-3 max-w-[360px] bg-card border border-accent2'
+          }
           bindtap={() => dismiss(t.id)}
         >
-          <text className="ToastText">{t.text}</text>
+          <text className="text-[#f5d5d8] text-[13px]">{t.text}</text>
         </view>
       ))}
     </view>

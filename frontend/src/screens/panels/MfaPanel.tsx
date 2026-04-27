@@ -38,21 +38,27 @@ export function MfaPanel() {
   if (!user.totp_enabled) {
     return (
       <view>
-        <view className="Button ButtonGhost" bindtap={enroll}>
-          <text className="ButtonText">{t('mfa.enable')}</text>
+        <view
+          className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+          bindtap={enroll}
+        >
+          <text className="text-white text-base font-semibold">{t('mfa.enable')}</text>
         </view>
         {mfaSecret ? (
           <view>
-            <text className="Muted">{t('mfa.scan')}</text>
-            <text className="FileName">{mfaSecret}</text>
+            <text className="text-muted text-sm py-2.5">{t('mfa.scan')}</text>
+            <text className="text-white text-[15px] font-medium">{mfaSecret}</text>
             <input
-              className="Input"
+              className="h-11 rounded-[10px] bg-card text-white px-3.5 text-base border border-border"
               placeholder={t('mfa.code_placeholder')}
               type="text"
               bindinput={(e: { detail: { value: string } }) => setMfaCode(e.detail.value)}
             />
-            <view className="Button" bindtap={activate}>
-              <text className="ButtonText">{t('mfa.activate')}</text>
+            <view
+              className="h-11 rounded-[10px] bg-accent items-center justify-center mt-1"
+              bindtap={activate}
+            >
+              <text className="text-white text-base font-semibold">{t('mfa.activate')}</text>
             </view>
           </view>
         ) : null}
@@ -62,15 +68,18 @@ export function MfaPanel() {
 
   return (
     <view>
-      <text className="Muted">{t('mfa.enabled')}</text>
-      <view className="Button ButtonGhost" bindtap={generateRecovery}>
-        <text className="ButtonText">{t('mfa.generate_recovery')}</text>
+      <text className="text-muted text-sm py-2.5">{t('mfa.enabled')}</text>
+      <view
+        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+        bindtap={generateRecovery}
+      >
+        <text className="text-white text-base font-semibold">{t('mfa.generate_recovery')}</text>
       </view>
       {recoveryCodes.length > 0 ? (
-        <view className="RecoveryCodes">
-          <text className="Muted">{t('mfa.recovery_save')}</text>
+        <view className="mt-3">
+          <text className="text-muted text-sm py-2.5">{t('mfa.recovery_save')}</text>
           {recoveryCodes.map((c, i) => (
-            <text key={i} className="FileName">{c}</text>
+            <text key={i} className="text-white text-[15px] font-medium">{c}</text>
           ))}
         </view>
       ) : null}

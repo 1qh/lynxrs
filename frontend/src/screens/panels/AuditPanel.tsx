@@ -11,15 +11,20 @@ export function AuditPanel() {
   }, [])
   return (
     <view>
-      <view className="Button ButtonGhost" bindtap={load}>
-        <text className="ButtonText">{t('audit.load')}</text>
+      <view
+        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+        bindtap={load}
+      >
+        <text className="text-white text-base font-semibold">{t('audit.load')}</text>
       </view>
       {audit.length > 0 ? (
-        <view className="AuditList">
+        <view>
           {audit.slice(0, 20).map((a, i) => (
-            <view key={i} className="AuditRow">
-              <text className="AuditAction">{a.action}</text>
-              <text className="Muted"> · {a.ip ?? 'n/a'} · {a.created_at.slice(0, 19)}</text>
+            <view key={i}>
+              <text className="text-white text-[15px] font-medium">{a.action}</text>
+              <text className="text-muted text-sm py-2.5">
+                · {a.ip ?? 'n/a'} · {a.created_at.slice(0, 19)}
+              </text>
             </view>
           ))}
         </view>

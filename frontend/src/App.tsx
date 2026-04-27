@@ -26,18 +26,18 @@ export function App() {
 
   if (boot) {
     return (
-      <view className="Screen">
-        <text className="Subtitle">{t('app.loading')}</text>
+      <view className="w-full h-full bg-bg items-center justify-center p-5">
+        <text className="text-muted text-sm">{t('app.loading')}</text>
       </view>
     )
   }
 
   return (
     <CrossRouter>
-      <view className="Screen">
-        <view className="Frame">
-          <view className="HeaderRow">
-            <text className="Title">{t('app.title')}</text>
+      <view className="w-full h-full bg-bg items-center justify-center p-5">
+        <view className="w-full max-w-[390px] bg-panel rounded-[20px] p-6">
+          <view className="flex-row items-center justify-between mb-4">
+            <text className="text-[32px] font-bold text-white">{t('app.title')}</text>
             <LangSwitcher />
           </view>
           {user ? <Home /> : <AuthForm />}

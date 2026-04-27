@@ -27,19 +27,28 @@ export function TrashPanel({ onRestore }: { onRestore?: () => void }) {
 
   return (
     <view>
-      <view className="Button ButtonGhost" bindtap={refresh}>
-        <text className="ButtonText">{t('trash.load')}</text>
+      <view
+        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+        bindtap={refresh}
+      >
+        <text className="text-white text-base font-semibold">{t('trash.load')}</text>
       </view>
       {trash.length > 0 ? (
-        <view className="TrashList">
+        <view className="mt-3 gap-2">
           {trash.map((f) => (
-            <view key={f.id} className="TrashRow">
-              <text className="FileName">{f.filename}</text>
-              <view className="Button ButtonGhost" bindtap={() => void restore(f.id)}>
-                <text className="ButtonText">{t('trash.restore')}</text>
+            <view key={f.id} className="bg-card rounded-[10px] p-3 gap-1">
+              <text className="text-white text-[15px] font-medium">{f.filename}</text>
+              <view
+                className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+                bindtap={() => void restore(f.id)}
+              >
+                <text className="text-white text-base font-semibold">{t('trash.restore')}</text>
               </view>
-              <view className="Button ButtonGhost" bindtap={() => void purge(f.id)}>
-                <text className="ButtonText">{t('trash.purge')}</text>
+              <view
+                className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+                bindtap={() => void purge(f.id)}
+              >
+                <text className="text-white text-base font-semibold">{t('trash.purge')}</text>
               </view>
             </view>
           ))}
