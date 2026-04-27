@@ -1,6 +1,6 @@
 import { useCallback, useState } from '@lynx-js/react'
 import { useTranslation } from 'react-i18next'
-import { Routes, Route, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Routes, Route, Navigate, Outlet, useLocation, useNavigate, useOutletContext } from 'react-router-dom'
 import { api } from '../api/client.js'
 import { useAuth } from '../state/auth.js'
 import { useEvents } from '../lib/useEvents.js'
@@ -87,14 +87,14 @@ function Layout() {
         {visibleTabs.map((tb) => {
           const active = loc.pathname.startsWith(tb.path)
           return (
-            <NavLink
+            <view
               key={tb.path}
-              to={tb.path}
               className={
                 active
                   ? 'rounded-md px-3 py-1.5 bg-primary'
                   : 'rounded-md px-3 py-1.5 bg-transparent'
               }
+              bindtap={() => navigate(tb.path)}
               aria-label={t(tb.labelKey)}
             >
               <text
@@ -106,7 +106,7 @@ function Layout() {
               >
                 {t(tb.labelKey)}
               </text>
-            </NavLink>
+            </view>
           )
         })}
       </view>
@@ -151,8 +151,6 @@ export function Home() {
     </Routes>
   )
 }
-
-import { useOutletContext } from 'react-router-dom'
 
 function FilesPanelRoute() {
   const ctx = useOutletContext<{ refreshKey: number }>()
