@@ -215,19 +215,21 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
       {selected.size > 0 ? (
         <view className="flex-row items-center gap-2 rounded-md bg-secondary border border-border px-3 py-2">
           <text className="flex-1 text-secondary-foreground text-sm">
-            {selected.size} selected
+            {t('files.selected', { count: selected.size })}
           </text>
           <view
             className="h-8 rounded-md bg-background border border-input items-center justify-center px-3"
             bindtap={clearSelection}
           >
-            <text className="text-foreground text-sm">clear</text>
+            <text className="text-foreground text-sm">{t('files.clear')}</text>
           </view>
           <view
             className="h-8 rounded-md bg-destructive items-center justify-center px-3"
             bindtap={() => void bulkDelete()}
           >
-            <text className="text-destructive-foreground text-sm font-medium">delete</text>
+            <text className="text-destructive-foreground text-sm font-medium">
+              {t('files.delete')}
+            </text>
           </view>
         </view>
       ) : null}
@@ -235,7 +237,12 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
         {loading ? (
           <text className="text-sm text-muted-foreground">{t('files.loading')}</text>
         ) : filtered.length === 0 ? (
-          <text className="text-sm text-muted-foreground">{t('files.no_files')}</text>
+          <view className="rounded-md border border-dashed border-border p-6 items-center gap-2">
+            <text className="text-foreground text-base font-medium">{t('files.no_files')}</text>
+            <text className="text-sm text-muted-foreground text-center">
+              {t('files.no_files_hint')}
+            </text>
+          </view>
         ) : (
           filtered.map((f) => {
             const isSelected = selected.has(f.id)
@@ -301,7 +308,7 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
           bindtap={loadingMore ? undefined : () => void loadMore()}
         >
           <text className="text-foreground text-sm font-medium">
-            {loadingMore ? t('files.loading') : 'Load more'}
+            {loadingMore ? t('files.loading') : t('files.load_more')}
           </text>
         </view>
       ) : null}
