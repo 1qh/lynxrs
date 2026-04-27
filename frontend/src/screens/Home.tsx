@@ -78,7 +78,7 @@ function Layout() {
       <view className="flex-row items-center justify-between px-4 py-3 gap-2 border-b border-border">
         <view className="flex-1 gap-0.5">
           <text className="text-sm font-medium text-foreground" aria-label={`signed in as ${user.email}`}>
-            {user.display_name ?? user.email}
+            {t('home.hello', { email: user.display_name ?? user.email })}
           </text>
           {!user.email_verified ? (
             <text className="text-[11px] text-warn" bindtap={resend} aria-label={t('home.email_not_verified')}>

@@ -86,6 +86,9 @@ test('boot → signup → upload → logout → relogin', async ({ page }) => {
 
   await waitForText(page, `Hello ${email}`, 15_000)
 
+  // Default tab is now Chat — switch to Files for the upload assertion.
+  await tapText(page, 'Files')
+  await waitForText(page, 'Upload sample text', 10_000)
   await tapText(page, 'Upload sample text')
   await waitForText(page, 'note-', 10_000)
 
@@ -100,5 +103,6 @@ test('boot → signup → upload → logout → relogin', async ({ page }) => {
   await tapText(page, 'Log in')
 
   await waitForText(page, `Hello ${email}`, 15_000)
+  await tapText(page, 'Files')
   await waitForText(page, 'note-', 10_000)
 })

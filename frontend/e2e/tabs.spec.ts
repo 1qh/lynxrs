@@ -61,12 +61,14 @@ test('tab nav switches panel and survives reload via hash', async ({ browser }) 
 
   // Layout renders immediately on user load — tab label is the tell.
   await waitForText(page, 'Files', 15_000)
-  // Default tab is Files; FilesPanel button shows after data fetch.
+  // Default tab is now Chat. Switch to Files to see FilesPanel button.
+  await tapText(page, 'Files')
   await waitForText(page, 'Upload sample text', 15_000)
 
-  // Switch to Settings tab; the Profile section button is the tell.
+  // Switch to Settings tab; the Profile section is rendered by default.
   await tapText(page, 'Settings')
   await waitForText(page, 'Save profile', 10_000)
+
 
   // Switch back to Files; the FilesPanel button reappears.
   await tapText(page, 'Files')
