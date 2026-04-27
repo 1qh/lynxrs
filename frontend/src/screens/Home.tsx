@@ -90,34 +90,36 @@ export function Home() {
   const visibleTabs = TABS.filter((tb) => !tb.adminOnly || user.role === 'admin')
 
   return (
-    <view className="gap-3 p-1">
-      <text className="text-xl font-semibold text-white mb-2">
+    <view className="gap-4">
+      <text className="text-base font-medium text-foreground">
         {t('home.hello', { email: user.email })}
       </text>
       {!user.email_verified ? (
         <view
-          className="bg-[#3a2a10] border border-[#6b4f1a] rounded-lg px-3 py-2.5 my-2"
+          className="rounded-md bg-secondary border border-border px-3 py-2"
           bindtap={resend}
         >
-          <text className="text-warn text-[13px]">{t('home.email_not_verified')}</text>
+          <text className="text-secondary-foreground text-[13px]">
+            {t('home.email_not_verified')}
+          </text>
         </view>
       ) : null}
-      <view className="flex-row flex-wrap gap-1.5 py-3 border-b border-border mb-3">
+      <view className="flex-row flex-wrap gap-1 py-2 border-b border-border">
         {visibleTabs.map((tb) => (
           <view
             key={tb.id}
             className={
               tab === tb.id
-                ? 'rounded-lg px-3.5 py-2 bg-accent2'
-                : 'rounded-lg px-3.5 py-2 bg-card'
+                ? 'rounded-md px-3 py-1.5 bg-primary'
+                : 'rounded-md px-3 py-1.5 bg-transparent'
             }
             bindtap={() => setTab(tb.id)}
           >
             <text
               className={
                 tab === tb.id
-                  ? 'text-white text-sm font-medium'
-                  : 'text-[#8aa2ff] text-sm font-medium'
+                  ? 'text-primary-foreground text-sm font-medium'
+                  : 'text-muted-foreground text-sm font-medium'
               }
             >
               {t(tb.labelKey)}
@@ -125,7 +127,7 @@ export function Home() {
           </view>
         ))}
       </view>
-      <view className="py-2">
+      <view className="py-2 gap-3">
         {tab === 'files' ? <FilesPanel refreshKey={refreshKey} /> : null}
         {tab === 'profile' ? <ProfilePanel /> : null}
         {tab === 'orgs' ? <OrgsPanel /> : null}
@@ -135,17 +137,19 @@ export function Home() {
         {tab === 'mfa' ? <MfaPanel /> : null}
         {tab === 'admin' && user.role === 'admin' ? <AdminPanel /> : null}
       </view>
-      <view
-        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
-        bindtap={logout}
-      >
-        <text className="text-white text-base font-semibold">{t('home.log_out')}</text>
-      </view>
-      <view
-        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
-        bindtap={logoutAll}
-      >
-        <text className="text-white text-base font-semibold">{t('home.log_out_all')}</text>
+      <view className="flex-row gap-2 pt-4 border-t border-border">
+        <view
+          className="h-9 flex-1 rounded-md bg-background border border-input items-center justify-center"
+          bindtap={logout}
+        >
+          <text className="text-foreground text-sm font-medium">{t('home.log_out')}</text>
+        </view>
+        <view
+          className="h-9 flex-1 rounded-md bg-background border border-input items-center justify-center"
+          bindtap={logoutAll}
+        >
+          <text className="text-foreground text-sm font-medium">{t('home.log_out_all')}</text>
+        </view>
       </view>
     </view>
   )

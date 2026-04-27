@@ -11,12 +11,20 @@ export function Toasts() {
           key={t.id}
           className={
             t.kind === 'error'
-              ? 'rounded-lg px-4 py-3 max-w-[360px] bg-[#4a1a20] border border-[#8a3340]'
-              : 'rounded-lg px-4 py-3 max-w-[360px] bg-card border border-accent2'
+              ? 'rounded-md px-4 py-3 max-w-[360px] bg-destructive border border-destructive'
+              : 'rounded-md px-4 py-3 max-w-[360px] bg-card border border-border'
           }
           bindtap={() => dismiss(t.id)}
         >
-          <text className="text-[#f5d5d8] text-[13px]">{t.text}</text>
+          <text
+            className={
+              t.kind === 'error'
+                ? 'text-destructive-foreground text-[13px]'
+                : 'text-card-foreground text-[13px]'
+            }
+          >
+            {t.text}
+          </text>
         </view>
       ))}
     </view>

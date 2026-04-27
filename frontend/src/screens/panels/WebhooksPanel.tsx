@@ -31,42 +31,46 @@ export function WebhooksPanel() {
   }, [refresh])
 
   return (
-    <view>
+    <view className="gap-3">
       <view
-        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+        className="h-10 rounded-md bg-background border border-input items-center justify-center"
         bindtap={refresh}
       >
-        <text className="text-white text-base font-semibold">{t('webhooks.load')}</text>
+        <text className="text-foreground text-sm font-medium">{t('webhooks.load')}</text>
       </view>
       {webhooks.length > 0 ? (
-        <view className="mt-3 gap-2">
+        <view className="gap-2">
           {webhooks.map((w) => (
-            <view key={w.id} className="bg-card rounded-[10px] p-3 gap-1">
-              <text className="text-white text-[15px] font-medium">{w.url}</text>
+            <view key={w.id} className="rounded-md bg-card border border-border p-3 gap-2">
+              <text className="text-foreground text-sm">{w.url}</text>
               <view
-                className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+                className="h-9 rounded-md bg-destructive items-center justify-center"
                 bindtap={() => void revoke(w.id)}
               >
-                <text className="text-white text-base font-semibold">{t('webhooks.revoke')}</text>
+                <text className="text-destructive-foreground text-sm font-medium">
+                  {t('webhooks.revoke')}
+                </text>
               </view>
             </view>
           ))}
         </view>
       ) : null}
       <input
-        className="h-11 rounded-[10px] bg-card text-white px-3.5 text-base border border-border"
+        className="h-10 rounded-md bg-background text-foreground px-3 text-sm border border-input"
         placeholder={t('webhooks.url_placeholder')}
         type="text"
         bindinput={(e: { detail: { value: string } }) => setWebhookUrl(e.detail.value)}
       />
       <view
-        className="h-11 rounded-[10px] bg-accent items-center justify-center mt-1"
+        className="h-10 rounded-md bg-primary items-center justify-center"
         bindtap={create}
       >
-        <text className="text-white text-base font-semibold">{t('webhooks.register')}</text>
+        <text className="text-primary-foreground text-sm font-medium">
+          {t('webhooks.register')}
+        </text>
       </view>
       {webhookSecret ? (
-        <text className="text-muted text-sm py-2.5">
+        <text className="text-sm text-muted-foreground">
           {t('webhooks.secret_once', { secret: webhookSecret })}
         </text>
       ) : null}

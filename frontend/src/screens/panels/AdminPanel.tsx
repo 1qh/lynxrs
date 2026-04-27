@@ -13,15 +13,15 @@ export function AdminPanel() {
     if (data) setStats(data as AdminStats)
   }, [])
   return (
-    <view className="gap-1.5 py-2.5 border-t border-border mt-2">
+    <view className="gap-2">
       <view
-        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+        className="h-10 rounded-md bg-background border border-input items-center justify-center"
         bindtap={load}
       >
-        <text className="text-white text-base font-semibold">{t('admin.stats')}</text>
+        <text className="text-foreground text-sm font-medium">{t('admin.stats')}</text>
       </view>
       {stats ? (
-        <text className="text-muted text-sm py-2.5">
+        <text className="text-sm text-muted-foreground">
           {t('admin.stats_summary', {
             users: stats.users,
             files: stats.files,

@@ -41,50 +41,50 @@ export function OrgsPanel() {
   }, [])
 
   return (
-    <view>
+    <view className="gap-3">
       <view
-        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+        className="h-10 rounded-md bg-background border border-input items-center justify-center"
         bindtap={refresh}
       >
-        <text className="text-white text-base font-semibold">
+        <text className="text-foreground text-sm font-medium">
           {t('orgs.load', { count: orgs.length })}
         </text>
       </view>
       <input
-        className="h-11 rounded-[10px] bg-card text-white px-3.5 text-base border border-border"
+        className="h-10 rounded-md bg-background text-foreground px-3 text-sm border border-input"
         placeholder={t('orgs.name_placeholder')}
         type="text"
         bindinput={(e: { detail: { value: string } }) => setOrgName(e.detail.value)}
       />
       <input
-        className="h-11 rounded-[10px] bg-card text-white px-3.5 text-base border border-border"
+        className="h-10 rounded-md bg-background text-foreground px-3 text-sm border border-input"
         placeholder={t('orgs.slug_placeholder')}
         type="text"
         bindinput={(e: { detail: { value: string } }) => setOrgSlug(e.detail.value)}
       />
       <view
-        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+        className="h-10 rounded-md bg-primary items-center justify-center"
         bindtap={create}
       >
-        <text className="text-white text-base font-semibold">{t('orgs.create')}</text>
+        <text className="text-primary-foreground text-sm font-medium">{t('orgs.create')}</text>
       </view>
       {orgs.length > 0 ? (
-        <view className="mt-3 gap-2">
+        <view className="gap-2">
           {orgs.map((o) => (
             <view
               key={o.id}
-              className="bg-card rounded-[10px] p-3 gap-1"
+              className="rounded-md bg-card border border-border p-3"
               bindtap={() => void openDetail(o.id)}
             >
-              <text className="text-white text-[15px] font-medium">{o.name}</text>
-              <text className="text-muted text-sm py-2.5"> · {o.slug}</text>
+              <text className="text-foreground text-sm font-medium">{o.name}</text>
+              <text className="text-xs text-muted-foreground">{o.slug}</text>
             </view>
           ))}
         </view>
       ) : null}
       {orgDetail ? (
-        <view className="mt-3">
-          <text className="text-muted text-sm py-2.5">
+        <view className="rounded-md bg-card border border-border p-3 gap-1">
+          <text className="text-sm text-muted-foreground">
             {orgDetail.stats
               ? t('orgs.detail_summary', {
                   id: orgDetail.id.slice(0, 8),
@@ -95,8 +95,8 @@ export function OrgsPanel() {
               : `${orgDetail.id.slice(0, 8)}…`}
           </text>
           {(orgDetail.members ?? []).map((m, i) => (
-            <text key={i} className="text-muted text-sm py-2.5">
-              · {m.email} ({m.role})
+            <text key={i} className="text-sm text-muted-foreground">
+              {m.email} ({m.role})
             </text>
           ))}
         </view>

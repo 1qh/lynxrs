@@ -37,28 +37,32 @@ export function MfaPanel() {
 
   if (!user.totp_enabled) {
     return (
-      <view>
+      <view className="gap-3">
         <view
-          className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+          className="h-10 rounded-md bg-primary items-center justify-center"
           bindtap={enroll}
         >
-          <text className="text-white text-base font-semibold">{t('mfa.enable')}</text>
+          <text className="text-primary-foreground text-sm font-medium">
+            {t('mfa.enable')}
+          </text>
         </view>
         {mfaSecret ? (
-          <view>
-            <text className="text-muted text-sm py-2.5">{t('mfa.scan')}</text>
-            <text className="text-white text-[15px] font-medium">{mfaSecret}</text>
+          <view className="rounded-md bg-card border border-border p-3 gap-2">
+            <text className="text-sm text-muted-foreground">{t('mfa.scan')}</text>
+            <text className="text-foreground text-sm font-mono">{mfaSecret}</text>
             <input
-              className="h-11 rounded-[10px] bg-card text-white px-3.5 text-base border border-border"
+              className="h-10 rounded-md bg-background text-foreground px-3 text-sm border border-input"
               placeholder={t('mfa.code_placeholder')}
               type="text"
               bindinput={(e: { detail: { value: string } }) => setMfaCode(e.detail.value)}
             />
             <view
-              className="h-11 rounded-[10px] bg-accent items-center justify-center mt-1"
+              className="h-10 rounded-md bg-primary items-center justify-center"
               bindtap={activate}
             >
-              <text className="text-white text-base font-semibold">{t('mfa.activate')}</text>
+              <text className="text-primary-foreground text-sm font-medium">
+                {t('mfa.activate')}
+              </text>
             </view>
           </view>
         ) : null}
@@ -67,19 +71,21 @@ export function MfaPanel() {
   }
 
   return (
-    <view>
-      <text className="text-muted text-sm py-2.5">{t('mfa.enabled')}</text>
+    <view className="gap-3">
+      <text className="text-sm text-muted-foreground">{t('mfa.enabled')}</text>
       <view
-        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+        className="h-10 rounded-md bg-background border border-input items-center justify-center"
         bindtap={generateRecovery}
       >
-        <text className="text-white text-base font-semibold">{t('mfa.generate_recovery')}</text>
+        <text className="text-foreground text-sm font-medium">
+          {t('mfa.generate_recovery')}
+        </text>
       </view>
       {recoveryCodes.length > 0 ? (
-        <view className="mt-3">
-          <text className="text-muted text-sm py-2.5">{t('mfa.recovery_save')}</text>
+        <view className="rounded-md bg-card border border-border p-3 gap-1">
+          <text className="text-sm text-muted-foreground">{t('mfa.recovery_save')}</text>
           {recoveryCodes.map((c, i) => (
-            <text key={i} className="text-white text-[15px] font-medium">{c}</text>
+            <text key={i} className="text-foreground text-sm font-mono">{c}</text>
           ))}
         </view>
       ) : null}

@@ -26,29 +26,35 @@ export function TrashPanel({ onRestore }: { onRestore?: () => void }) {
   }, [refresh])
 
   return (
-    <view>
+    <view className="gap-2">
       <view
-        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+        className="h-10 rounded-md bg-background border border-input items-center justify-center"
         bindtap={refresh}
       >
-        <text className="text-white text-base font-semibold">{t('trash.load')}</text>
+        <text className="text-foreground text-sm font-medium">{t('trash.load')}</text>
       </view>
       {trash.length > 0 ? (
-        <view className="mt-3 gap-2">
+        <view className="gap-2">
           {trash.map((f) => (
-            <view key={f.id} className="bg-card rounded-[10px] p-3 gap-1">
-              <text className="text-white text-[15px] font-medium">{f.filename}</text>
-              <view
-                className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
-                bindtap={() => void restore(f.id)}
-              >
-                <text className="text-white text-base font-semibold">{t('trash.restore')}</text>
-              </view>
-              <view
-                className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
-                bindtap={() => void purge(f.id)}
-              >
-                <text className="text-white text-base font-semibold">{t('trash.purge')}</text>
+            <view key={f.id} className="rounded-md bg-card border border-border p-3 gap-2">
+              <text className="text-foreground text-sm font-medium">{f.filename}</text>
+              <view className="flex-row gap-2">
+                <view
+                  className="h-9 flex-1 rounded-md bg-background border border-input items-center justify-center"
+                  bindtap={() => void restore(f.id)}
+                >
+                  <text className="text-foreground text-sm font-medium">
+                    {t('trash.restore')}
+                  </text>
+                </view>
+                <view
+                  className="h-9 flex-1 rounded-md bg-destructive items-center justify-center"
+                  bindtap={() => void purge(f.id)}
+                >
+                  <text className="text-destructive-foreground text-sm font-medium">
+                    {t('trash.purge')}
+                  </text>
+                </view>
               </view>
             </view>
           ))}

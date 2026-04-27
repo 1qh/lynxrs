@@ -17,21 +17,23 @@ export function ProfilePanel() {
   }, [displayName, setUser, user])
 
   return (
-    <view>
-      <text className="text-muted text-sm py-2.5">
+    <view className="gap-3">
+      <text className="text-sm text-muted-foreground">
         {t('profile.display_name_label', { value: user.display_name ?? t('profile.display_name_empty') })}
       </text>
       <input
-        className="h-11 rounded-[10px] bg-card text-white px-3.5 text-base border border-border"
+        className="h-10 rounded-md bg-background text-foreground px-3 text-sm border border-input"
         placeholder={t('profile.display_name_placeholder')}
         type="text"
         bindinput={(e: { detail: { value: string } }) => setDisplayName(e.detail.value)}
       />
       <view
-        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+        className="h-10 rounded-md bg-primary items-center justify-center"
         bindtap={save}
       >
-        <text className="text-white text-base font-semibold">{t('profile.save_profile')}</text>
+        <text className="text-primary-foreground text-sm font-medium">
+          {t('profile.save_profile')}
+        </text>
       </view>
     </view>
   )

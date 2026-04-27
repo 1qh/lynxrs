@@ -10,20 +10,20 @@ export function AuditPanel() {
     if (data) setAudit(data as Array<{ action: string; ip?: string | null; created_at: string }>)
   }, [])
   return (
-    <view>
+    <view className="gap-2">
       <view
-        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+        className="h-10 rounded-md bg-background border border-input items-center justify-center"
         bindtap={load}
       >
-        <text className="text-white text-base font-semibold">{t('audit.load')}</text>
+        <text className="text-foreground text-sm font-medium">{t('audit.load')}</text>
       </view>
       {audit.length > 0 ? (
-        <view>
+        <view className="gap-1">
           {audit.slice(0, 20).map((a, i) => (
-            <view key={i}>
-              <text className="text-white text-[15px] font-medium">{a.action}</text>
-              <text className="text-muted text-sm py-2.5">
-                · {a.ip ?? 'n/a'} · {a.created_at.slice(0, 19)}
+            <view key={i} className="rounded-md border border-border bg-card p-3">
+              <text className="text-foreground text-sm font-medium">{a.action}</text>
+              <text className="text-xs text-muted-foreground">
+                {a.ip ?? 'n/a'} · {a.created_at.slice(0, 19)}
               </text>
             </view>
           ))}

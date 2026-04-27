@@ -44,36 +44,36 @@ export function AuthForm() {
   }, [mode, setUser, t])
 
   return (
-    <view className="gap-3 p-1">
-      <text className="text-xl font-semibold text-white mb-2">
+    <view className="gap-3">
+      <text className="text-xl font-semibold text-foreground">
         {mode === 'signup' ? t('auth.create_account') : t('auth.login')}
       </text>
       <input
-        className="h-11 rounded-[10px] bg-card text-white px-3.5 text-base border border-border"
+        className="h-10 rounded-md bg-background text-foreground px-3 text-sm border border-input"
         placeholder={t('auth.email')}
         type="email"
         bindinput={(e: { detail: { value: string } }) => { emailRef.current = e.detail.value }}
       />
       <input
-        className="h-11 rounded-[10px] bg-card text-white px-3.5 text-base border border-border"
+        className="h-10 rounded-md bg-background text-foreground px-3 text-sm border border-input"
         placeholder={t('auth.password')}
         type="password"
         bindinput={(e: { detail: { value: string } }) => { passwordRef.current = e.detail.value }}
       />
-      {err ? <text className="text-danger text-sm">{err}</text> : null}
+      {err ? <text className="text-destructive text-sm">{err}</text> : null}
       <view
-        className="h-11 rounded-[10px] bg-accent items-center justify-center mt-1"
+        className="h-10 rounded-md bg-primary items-center justify-center"
         bindtap={busy ? undefined : submit}
       >
-        <text className="text-white text-base font-semibold">
+        <text className="text-primary-foreground text-sm font-medium">
           {busy ? '…' : mode === 'signup' ? t('auth.sign_up') : t('auth.log_in')}
         </text>
       </view>
       <view
-        className="items-center p-2.5"
+        className="items-center py-2"
         bindtap={() => setMode(mode === 'signup' ? 'login' : 'signup')}
       >
-        <text className="text-[#8aa2ff] text-sm">
+        <text className="text-muted-foreground text-sm">
           {mode === 'signup' ? t('auth.have_account') : t('auth.new_here')}
         </text>
       </view>

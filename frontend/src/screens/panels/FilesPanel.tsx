@@ -77,8 +77,6 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
     [refresh],
   )
 
-  // Real-file picker — web-only. On platforms without `<input type=file>`
-  // (Lynx native), the click is a no-op; the sample button stays as fallback.
   const pickAndUpload = useCallback(() => {
     const doc = (globalThis as { document?: Document }).document
     if (!doc) return
@@ -91,10 +89,6 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
     el.click()
   }, [uploadBlob])
 
-  // Drag-drop: register on document so drops anywhere on the page upload.
-  // Lynx's <view> doesn't bubble HTML5 drag events naturally, so we listen
-  // at document level. When the user drops on a non-FilesPanel area the
-  // upload still fires — acceptable since it's the only file action.
   useEffect(() => {
     const doc = (globalThis as { document?: Document }).document
     if (!doc) return
@@ -143,85 +137,91 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
     void refreshStarred()
   }, [refreshStarred])
 
+  const filtered = files.filter((f) =>
+    query.trim() ? f.filename.toLowerCase().includes(query.trim().toLowerCase()) : true,
+  )
+
   return (
-    <view>
-      <view
-        className="h-11 rounded-[10px] bg-accent items-center justify-center mt-1"
-        bindtap={busy ? undefined : pickAndUpload}
-      >
-        <text className="text-white text-base font-semibold">
-          {busy ? t('files.uploading') : t('files.upload_file')}
-        </text>
-      </view>
-      <view
-        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
-        bindtap={busy ? undefined : uploadSample}
-      >
-        <text className="text-white text-base font-semibold">{t('files.upload_sample')}</text>
+    <view className="gap-3">
+      <view className="flex-row gap-2">
+        <view
+          className="h-10 flex-1 rounded-md bg-primary items-center justify-center"
+          bindtap={busy ? undefined : pickAndUpload}
+        >
+          <text className="text-primary-foreground text-sm font-medium">
+            {busy ? t('files.uploading') : t('files.upload_file')}
+          </text>
+        </view>
+        <view
+          className="h-10 rounded-md bg-background border border-input items-center justify-center px-4"
+          bindtap={busy ? undefined : uploadSample}
+        >
+          <text className="text-foreground text-sm font-medium">
+            {t('files.upload_sample')}
+          </text>
+        </view>
       </view>
       <input
-        className="h-11 rounded-[10px] bg-card text-white px-3.5 text-base border border-border"
+        className="h-10 rounded-md bg-background text-foreground px-3 text-sm border border-input"
         placeholder={t('files.filter_placeholder')}
         type="text"
         bindinput={(e: { detail: { value: string } }) => setQuery(e.detail.value)}
       />
-      <view className="mt-3 gap-2">
+      <view className="gap-2">
         {loading ? (
-          <text className="text-muted text-sm py-2.5">{t('files.loading')}</text>
-        ) : files.length === 0 ? (
-          <text className="text-muted text-sm py-2.5">{t('files.no_files')}</text>
+          <text className="text-sm text-muted-foreground">{t('files.loading')}</text>
+        ) : filtered.length === 0 ? (
+          <text className="text-sm text-muted-foreground">{t('files.no_files')}</text>
         ) : (
-          files
-            .filter((f) =>
-              query.trim() ? f.filename.toLowerCase().includes(query.trim().toLowerCase()) : true,
-            )
-            .map((f) => (
-              <view key={f.id} className="bg-card rounded-[10px] p-3 gap-1">
-                <text
-                  className="text-white text-[15px] font-medium"
-                  bindtap={() => void share(f.id)}
-                >
-                  {f.filename}
-                </text>
-                <text className="text-muted text-xs">
-                  {f.size_bytes}B · {f.content_type}
-                </text>
-                {f.description ? (
-                  <text className="text-muted text-sm py-2.5">{f.description}</text>
-                ) : null}
+          filtered.map((f) => (
+            <view key={f.id} className="rounded-md bg-card border border-border p-3 gap-2">
+              <text
+                className="text-foreground text-sm font-medium"
+                bindtap={() => void share(f.id)}
+              >
+                {f.filename}
+              </text>
+              <text className="text-xs text-muted-foreground">
+                {f.size_bytes}B · {f.content_type}
+              </text>
+              {f.description ? (
+                <text className="text-sm text-muted-foreground">{f.description}</text>
+              ) : null}
+              <view className="flex-row gap-2">
                 <view
-                  className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+                  className="h-8 rounded-md bg-background border border-input items-center justify-center px-3"
                   bindtap={() => void toggleStar(f.id)}
                 >
-                  <text className="text-white text-base font-semibold">⭐</text>
+                  <text className="text-foreground text-sm">⭐</text>
                 </view>
                 <view
-                  className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+                  className="h-8 rounded-md bg-background border border-input items-center justify-center px-3"
                   bindtap={() => setDescEdit({ id: f.id, text: f.description ?? '' })}
                 >
-                  <text className="text-white text-base font-semibold">{t('files.describe')}</text>
+                  <text className="text-foreground text-sm">{t('files.describe')}</text>
                 </view>
               </view>
-            ))
+            </view>
+          ))
         )}
       </view>
       {shareUrl ? (
-        <text className="text-muted text-sm py-2.5">
+        <text className="text-sm text-muted-foreground">
           {t('files.share_label', { url: shareUrl })}
         </text>
       ) : null}
       <view
-        className="h-11 rounded-[10px] items-center justify-center mt-1 bg-transparent border border-border"
+        className="h-10 rounded-md bg-background border border-input items-center justify-center"
         bindtap={refreshStarred}
       >
-        <text className="text-white text-base font-semibold">
+        <text className="text-foreground text-sm font-medium">
           {t('files.load_starred', { count: starred.length })}
         </text>
       </view>
       {descEdit ? (
-        <view>
+        <view className="rounded-md bg-card border border-border p-3 gap-2">
           <input
-            className="h-11 rounded-[10px] bg-card text-white px-3.5 text-base border border-border"
+            className="h-10 rounded-md bg-background text-foreground px-3 text-sm border border-input"
             placeholder={t('files.description_placeholder')}
             type="text"
             bindinput={(e: { detail: { value: string } }) =>
@@ -229,10 +229,12 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
             }
           />
           <view
-            className="h-11 rounded-[10px] bg-accent items-center justify-center mt-1"
+            className="h-10 rounded-md bg-primary items-center justify-center"
             bindtap={saveDescribe}
           >
-            <text className="text-white text-base font-semibold">{t('files.save_description')}</text>
+            <text className="text-primary-foreground text-sm font-medium">
+              {t('files.save_description')}
+            </text>
           </view>
         </view>
       ) : null}
