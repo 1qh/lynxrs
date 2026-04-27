@@ -59,7 +59,9 @@ test('tab nav switches panel and survives reload via hash', async ({ browser }) 
   const page = await ctx.newPage()
   await page.goto(PREVIEW, { waitUntil: 'networkidle' })
 
-  // Default tab is Files — its "Upload sample text" button is the tell.
+  // Layout renders immediately on user load — tab label is the tell.
+  await waitForText(page, 'Files', 15_000)
+  // Default tab is Files; FilesPanel button shows after data fetch.
   await waitForText(page, 'Upload sample text', 15_000)
 
   // Switch to Settings tab; the Profile section button is the tell.
