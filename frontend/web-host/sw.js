@@ -19,6 +19,23 @@ self.addEventListener('activate', (e) => {
   )
 })
 
+self.addEventListener('push', (e) => {
+  let payload = { title: 'simu', body: '' }
+  try { payload = e.data ? e.data.json() : payload } catch {}
+  e.waitUntil(self.registration.showNotification(payload.title || 'simu', {
+    body: payload.body || '',
+    icon: '/manifest.webmanifest',
+  }))
+})
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close()
+  e.waitUntil(self.clients.matchAll({ type: 'window' }).then((cs) => {
+    if (cs[0]) return cs[0].focus()
+    return self.clients.openWindow('/')
+  }))
+})
+
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url)
   // API: always go to network. Backend SSE/JSON should never be cached.

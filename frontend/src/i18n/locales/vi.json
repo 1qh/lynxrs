@@ -62,8 +62,13 @@
   },
   "settings": {
     "profile": "Hồ sơ",
+    "notifications": "Thông báo",
     "mfa": "MFA",
-    "webhooks": "Webhook"
+    "webhooks": "Webhook",
+    "notifications_status": "Quyền",
+    "enable_notifications": "Bật thông báo",
+    "test_notification": "Gửi thông báo thử",
+    "notifications_hint": "Trình duyệt sẵn sàng nhận push. Push từ server cần VAPID keys."
   },
   "org": {
     "personal": "Cá nhân",

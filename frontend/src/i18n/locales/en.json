@@ -62,8 +62,13 @@
   },
   "settings": {
     "profile": "Profile",
+    "notifications": "Notifications",
     "mfa": "MFA",
-    "webhooks": "Webhooks"
+    "webhooks": "Webhooks",
+    "notifications_status": "Permission",
+    "enable_notifications": "Enable notifications",
+    "test_notification": "Send test notification",
+    "notifications_hint": "Browser-side push handler ready. Server-driven push requires VAPID keys (set on backend)."
   },
   "org": {
     "personal": "Personal",
