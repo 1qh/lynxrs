@@ -356,6 +356,11 @@ pub async fn send_and_stream(
     // Persist the user turn synchronously so optimistic UI replay matches the
     // server-of-record on refresh.
     let user_msg = insert_message(&state, id, "user", &input.content).await?;
+    let _ = state.bus.send(crate::events::EventMsg::MessageCreated {
+        conversation_id: id,
+        message_id: user_msg.id,
+        role: "user".to_string(),
+    });
     let prompt = input.content.clone();
     let conv_id = id;
     let db_for_persist = state.db.clone();
@@ -376,6 +381,7 @@ pub async fn send_and_stream(
     history.extend(prior.into_iter().map(|m| (m.role, m.content)));
     let model_name = conv.model.clone();
     let temperature = conv.temperature;
+    let bus = state.bus.clone();
 
     let stream = async_stream::stream! {
         yield Ok(Event::default()
@@ -410,6 +416,11 @@ pub async fn send_and_stream(
         }
 
         if let Ok(msg) = insert_message_db(&db_for_persist, conv_id, "assistant", &acc).await {
+            let _ = bus.send(crate::events::EventMsg::MessageCreated {
+                conversation_id: conv_id,
+                message_id: msg.id,
+                role: "assistant".to_string(),
+            });
             yield Ok(Event::default()
                 .event("assistant_persisted")
                 .data(msg.id.to_string()));

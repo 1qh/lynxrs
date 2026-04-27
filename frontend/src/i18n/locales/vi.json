@@ -54,7 +54,9 @@
     "system_prompt": "Lời nhắc hệ thống",
     "system_prompt_placeholder": "Bạn là trợ lý hữu ích…",
     "temperature": "Nhiệt độ",
-    "close": "Đóng"
+    "close": "Đóng",
+    "artifacts": "Đoạn mã",
+    "copy": "Sao chép"
   },
   "settings": {
     "profile": "Hồ sơ",

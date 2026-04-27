@@ -28,6 +28,11 @@ pub enum EventMsg {
         file_id: Uuid,
         owner_id: Uuid,
     },
+    MessageCreated {
+        conversation_id: Uuid,
+        message_id: Uuid,
+        role: String,
+    },
     Ping {
         at_ms: i64,
     },

@@ -54,7 +54,9 @@
     "system_prompt": "System prompt",
     "system_prompt_placeholder": "You are a helpful assistant…",
     "temperature": "Temperature",
-    "close": "Close"
+    "close": "Close",
+    "artifacts": "Artifacts",
+    "copy": "Copy"
   },
   "settings": {
     "profile": "Profile",

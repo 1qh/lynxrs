@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from '@lynx-js/react'
 import { useTranslation } from 'react-i18next'
 import { reportError } from '../../state/toast.js'
+import { useEvents } from '../../lib/useEvents.js'
 
 type Message = {
   id: string
@@ -36,6 +37,21 @@ export function ChatPanel() {
   const [searchQ, setSearchQ] = useState('')
   const [searchHits, setSearchHits] = useState<Array<{ conversation_id: string; title: string; snippet: string }>>([])
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [artifactsOpen, setArtifactsOpen] = useState(false)
+
+  // Parse fenced code blocks from all assistant messages → artifact list.
+  const artifacts = (() => {
+    const out: Array<{ lang: string; code: string }> = []
+    for (const m of messages) {
+      if (m.role !== 'assistant') continue
+      const re = /```(\w*)\n([\s\S]*?)```/g
+      let match: RegExpExecArray | null
+      while ((match = re.exec(m.content)) !== null) {
+        out.push({ lang: match[1] || 'text', code: match[2]! })
+      }
+    }
+    return out
+  })()
   const inputRef = useRef('')
   const searchRef = useRef('')
   const abortRef = useRef<AbortController | null>(null)
@@ -74,6 +90,17 @@ export function ChatPanel() {
 
   useEffect(() => { void refreshConvs() }, [refreshConvs])
   useEffect(() => { if (activeId) void loadMessages(activeId) }, [activeId, loadMessages])
+
+  // Multi-device live sync: when another tab/session adds a message to the
+  // currently-open conversation, refresh — but only if we're not the one
+  // streaming (to avoid clobbering optimistic state).
+  useEvents(['message_created'], (msg) => {
+    const m = msg as { conversation_id?: string }
+    if (!streaming && activeId && m.conversation_id === activeId) {
+      void loadMessages(activeId)
+    }
+    void refreshConvs()
+  })
 
   const newConversation = useCallback(async () => {
     try {
@@ -541,6 +568,46 @@ export function ChatPanel() {
             aria-label={t('chat.speak')}
           >
             <text className="text-secondary-foreground text-xs">🔊</text>
+          </view>
+          {artifacts.length > 0 ? (
+            <view
+              className="h-7 rounded-md bg-secondary border border-border items-center justify-center px-3"
+              bindtap={() => setArtifactsOpen(true)}
+              aria-label={t('chat.artifacts')}
+            >
+              <text className="text-secondary-foreground text-xs">
+                ⌗ {artifacts.length}
+              </text>
+            </view>
+          ) : null}
+        </view>
+      ) : null}
+
+      {/* Artifacts panel */}
+      {artifactsOpen ? (
+        <view
+          className="fixed inset-0 bg-background/95 z-[9000] p-6"
+          bindtap={() => setArtifactsOpen(false)}
+        >
+          <view className="rounded-md bg-card border border-border p-4 gap-3 max-h-[90%] overflow-auto">
+            <text className="text-foreground text-sm font-medium">{t('chat.artifacts')}</text>
+            {artifacts.map((a, i) => (
+              <view key={i} className="rounded-md bg-background border border-border p-3 gap-2">
+                <text className="text-xs text-muted-foreground">{a.lang}</text>
+                <text className="text-foreground text-xs font-mono whitespace-pre-wrap">
+                  {a.code.length > 1000 ? a.code.slice(0, 1000) + '\n…' : a.code}
+                </text>
+                <view
+                  className="h-7 rounded-md bg-primary items-center justify-center"
+                  bindtap={() => {
+                    const w = globalThis as { navigator?: { clipboard?: { writeText: (s: string) => Promise<void> } } }
+                    void w.navigator?.clipboard?.writeText(a.code)
+                  }}
+                >
+                  <text className="text-primary-foreground text-xs font-medium">{t('chat.copy')}</text>
+                </view>
+              </view>
+            ))}
           </view>
         </view>
       ) : null}
