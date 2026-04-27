@@ -10,6 +10,7 @@ use reqwest::{Client, StatusCode};
 use sea_orm::{ConnectOptions, Database};
 use sea_orm_migration::MigratorTrait;
 use testcontainers::ContainerAsync;
+use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::{minio::MinIO, postgres::Postgres};
 use tokio::net::TcpListener;
@@ -29,7 +30,11 @@ struct App {
 }
 
 async fn spawn_app() -> App {
-    let pg = Postgres::default().start().await.expect("start postgres");
+    let pg = Postgres::default()
+        .with_tag("16-alpine")
+        .start()
+        .await
+        .expect("start postgres");
     let pg_host = pg.get_host().await.expect("pg host");
     let pg_port = pg.get_host_port_ipv4(5432).await.expect("pg port");
     let database_url = format!("postgres://postgres:postgres@{pg_host}:{pg_port}/postgres");
@@ -2760,7 +2765,11 @@ fn full_client() -> Client {
 }
 
 async fn spawn_app_full() -> App {
-    let pg = Postgres::default().start().await.expect("start postgres");
+    let pg = Postgres::default()
+        .with_tag("16-alpine")
+        .start()
+        .await
+        .expect("start postgres");
     let pg_host = pg.get_host().await.expect("pg host");
     let pg_port = pg.get_host_port_ipv4(5432).await.expect("pg port");
     let database_url = format!("postgres://postgres:postgres@{pg_host}:{pg_port}/postgres");
