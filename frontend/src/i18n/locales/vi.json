@@ -56,7 +56,9 @@
     "temperature": "Nhiệt độ",
     "close": "Đóng",
     "artifacts": "Đoạn mã",
-    "copy": "Sao chép"
+    "copy": "Sao chép",
+    "all_projects": "Tất cả",
+    "project_name": "Tên dự án?"
   },
   "settings": {
     "profile": "Hồ sơ",

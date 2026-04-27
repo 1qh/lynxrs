@@ -56,7 +56,9 @@
     "temperature": "Temperature",
     "close": "Close",
     "artifacts": "Artifacts",
-    "copy": "Copy"
+    "copy": "Copy",
+    "all_projects": "All",
+    "project_name": "Project name?"
   },
   "settings": {
     "profile": "Profile",

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { reportError } from '../../state/toast.js'
 import { useEvents } from '../../lib/useEvents.js'
 import { LynxMarkdown } from '../../lib/lynxMarkdown.js'
+import { useProjects } from '../../state/projects.js'
 
 type Message = {
   id: string
@@ -39,6 +40,15 @@ export function ChatPanel() {
   const [searchHits, setSearchHits] = useState<Array<{ conversation_id: string; title: string; snippet: string }>>([])
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [artifactsOpen, setArtifactsOpen] = useState(false)
+  const projects = useProjects((s) => s.projects)
+  const activeProject = useProjects((s) => s.active)
+  const byConv = useProjects((s) => s.byConv)
+  const setActiveProject = useProjects((s) => s.setActive)
+  const addProject = useProjects((s) => s.add)
+  const assignProj = useProjects((s) => s.assign)
+  const filteredConvs = activeProject === 'all'
+    ? convs
+    : convs.filter((c) => byConv[c.id] === activeProject)
 
   // Parse fenced code blocks from all assistant messages → artifact list.
   const artifacts = (() => {
@@ -470,16 +480,68 @@ export function ChatPanel() {
         </view>
       ) : null}
 
+      {/* Project picker */}
+      <view className="flex-row items-center gap-1 overflow-auto">
+        {[{ id: 'all', name: t('chat.all_projects') }, ...projects].map((p) => (
+          <view
+            key={p.id}
+            className={
+              activeProject === p.id
+                ? 'h-7 rounded-md bg-primary items-center justify-center px-2'
+                : 'h-7 rounded-md bg-secondary items-center justify-center px-2'
+            }
+            bindtap={() => setActiveProject(p.id)}
+          >
+            <text
+              className={
+                activeProject === p.id
+                  ? 'text-primary-foreground text-xs font-medium'
+                  : 'text-secondary-foreground text-xs'
+              }
+            >
+              {p.name}
+            </text>
+          </view>
+        ))}
+        <view
+          className="h-7 rounded-md bg-secondary items-center justify-center px-2"
+          bindtap={() => {
+            const w = globalThis as { prompt?: (m: string) => string | null }
+            const name = w.prompt?.(t('chat.project_name'))?.trim()
+            if (name) {
+              const p = addProject(name)
+              setActiveProject(p.id)
+            }
+          }}
+        >
+          <text className="text-secondary-foreground text-xs">+</text>
+        </view>
+      </view>
+
       {/* Conversation list strip */}
       <view className="flex-row items-center gap-2 overflow-auto">
         <view
           className="h-8 rounded-md bg-primary items-center justify-center px-3"
-          bindtap={() => void newConversation()}
+          bindtap={() => {
+            void (async () => {
+              await newConversation()
+              // If a project filter is active, attach the new chat to it.
+              if (activeProject !== 'all') {
+                // newConversation sets activeId to the newly created chat.
+                const id = useProjects.getState().byConv
+                void id // appease unused
+                setTimeout(() => {
+                  const cur = (globalThis as { __simuActiveConv?: string }).__simuActiveConv
+                  if (cur) assignProj(cur, activeProject)
+                }, 100)
+              }
+            })()
+          }}
           aria-label={t('chat.new_conversation')}
         >
           <text className="text-primary-foreground text-sm font-medium">+ {t('chat.new')}</text>
         </view>
-        {convs.map((c) => (
+        {filteredConvs.map((c) => (
           <view
             key={c.id}
             className={
