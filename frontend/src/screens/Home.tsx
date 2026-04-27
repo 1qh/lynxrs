@@ -14,6 +14,7 @@ import { useEvents } from '../lib/useEvents.js'
 import { useKeyboardShortcuts } from '../lib/useKeyboardShortcuts.js'
 import { OrgContextSwitcher } from './OrgContextSwitcher.js'
 import { AdminPanel } from './panels/AdminPanel.js'
+import { ChatPanel } from './panels/ChatPanel.js'
 import { FilesPanel } from './panels/FilesPanel.js'
 import { SettingsPanel } from './panels/SettingsPanel.js'
 import { OrgsPanel } from './panels/OrgsPanel.js'
@@ -23,13 +24,14 @@ import { AuditPanel } from './panels/AuditPanel.js'
 type TabSpec = { path: string; labelKey: string; glyph: string; adminOnly?: boolean }
 
 const TABS: ReadonlyArray<TabSpec> = [
+  { path: '/chat', labelKey: 'tabs.chat', glyph: '💬' },
   { path: '/files', labelKey: 'tabs.files', glyph: '📁' },
   { path: '/orgs', labelKey: 'tabs.orgs', glyph: '🏢' },
-  { path: '/audit', labelKey: 'tabs.audit', glyph: '📊' },
   { path: '/settings', labelKey: 'tabs.settings', glyph: '⚙' },
 ]
 
 const SECONDARY_TABS: ReadonlyArray<TabSpec> = [
+  { path: '/audit', labelKey: 'tabs.audit', glyph: '📊' },
   { path: '/trash', labelKey: 'tabs.trash', glyph: '🗑' },
   { path: '/admin', labelKey: 'tabs.admin', glyph: '🛡', adminOnly: true },
 ]
@@ -48,6 +50,7 @@ function Layout() {
   const [gPrefix, setG] = useState(false)
   useKeyboardShortcuts([
     { key: 'g', handler: () => { setG(true); setTimeout(() => setG(false), 1500) } },
+    { key: 'c', handler: () => gPrefix && navigate('/chat') },
     { key: 'f', handler: () => gPrefix && navigate('/files') },
     { key: 'o', handler: () => gPrefix && navigate('/orgs') },
     { key: 't', handler: () => gPrefix && navigate('/trash') },
@@ -189,7 +192,9 @@ export function Home() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route index element={<FilesView />} />
+        <Route index element={<ChatPanel />} />
+        <Route path="chat" element={<ChatPanel />} />
+        <Route path="chat/:id" element={<ChatPanel />} />
         <Route path="files" element={<FilesView />} />
         <Route path="files/:id" element={<FilesView />} />
         <Route path="orgs" element={<OrgsPanel />} />
@@ -198,7 +203,7 @@ export function Home() {
         <Route path="audit" element={<AuditPanel />} />
         <Route path="settings/*" element={<SettingsPanel />} />
         <Route path="admin" element={<AdminPanel />} />
-        <Route path="*" element={<FilesView />} />
+        <Route path="*" element={<ChatPanel />} />
       </Route>
     </Routes>
   )

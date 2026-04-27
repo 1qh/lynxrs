@@ -24,12 +24,22 @@
     "log_out_all": "Log out all devices"
   },
   "tabs": {
+    "chat": "Chat",
     "files": "Files",
     "orgs": "Orgs",
     "trash": "Trash",
     "audit": "Audit",
     "settings": "Settings",
     "admin": "Admin"
+  },
+  "chat": {
+    "new": "New",
+    "new_conversation": "New conversation",
+    "empty_title": "Start a conversation",
+    "empty_hint": "Tap “+ New” to begin chatting.",
+    "start_conversation": "Send your first message",
+    "compose_placeholder": "Message…",
+    "send": "Send"
   },
   "settings": {
     "profile": "Profile",

@@ -24,12 +24,22 @@
     "log_out_all": "Đăng xuất mọi thiết bị"
   },
   "tabs": {
+    "chat": "Trò chuyện",
     "files": "Tệp",
     "orgs": "Tổ chức",
     "trash": "Thùng rác",
     "audit": "Kiểm toán",
     "settings": "Cài đặt",
     "admin": "Quản trị"
+  },
+  "chat": {
+    "new": "Mới",
+    "new_conversation": "Cuộc trò chuyện mới",
+    "empty_title": "Bắt đầu trò chuyện",
+    "empty_hint": "Nhấn “+ Mới” để bắt đầu.",
+    "start_conversation": "Gửi tin nhắn đầu tiên",
+    "compose_placeholder": "Tin nhắn…",
+    "send": "Gửi"
   },
   "settings": {
     "profile": "Hồ sơ",
