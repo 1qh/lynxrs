@@ -97,6 +97,8 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         chat::SendMessageInput,
         chat::SearchHit,
         chat::ExportDto,
+        chat::ShareCreated,
+        chat::PublicConversation,
     )),
     tags(
         (name = "auth", description = "Authentication, MFA, sessions"),
@@ -211,6 +213,8 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(chat::search))
         .routes(routes!(chat::update, chat::delete))
         .routes(routes!(chat::export))
+        .routes(routes!(chat::share, chat::unshare))
+        .routes(routes!(chat::share_view))
         .routes(routes!(chat::messages, chat::send_and_stream))
         .with_state(state.clone())
         .split_for_parts();

@@ -35,6 +35,9 @@ pub struct ConversationDto {
     pub model: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub system_prompt: String,
+    pub temperature: f32,
+    pub shared: bool,
 }
 
 impl From<conversation::Model> for ConversationDto {
@@ -45,6 +48,9 @@ impl From<conversation::Model> for ConversationDto {
             model: m.model,
             created_at: m.created_at,
             updated_at: m.updated_at,
+            system_prompt: m.system_prompt,
+            temperature: m.temperature,
+            shared: m.share_token_hash.is_some(),
         }
     }
 }
@@ -92,6 +98,9 @@ pub async fn create(
         created_at: Set(now),
         updated_at: Set(now),
         archived_at: Set(None),
+        system_prompt: Set(String::new()),
+        temperature: Set(0.7),
+        share_token_hash: Set(None),
     }
     .insert(&state.db)
     .await?;
@@ -151,6 +160,8 @@ pub struct UpdateConversationInput {
     pub model: Option<String>,
     /// Set to true to archive (hide from list); false to unarchive.
     pub archived: Option<bool>,
+    pub system_prompt: Option<String>,
+    pub temperature: Option<f32>,
 }
 
 #[utoipa::path(patch, path = "/conversations/{id}", request_body = UpdateConversationInput,
@@ -179,6 +190,12 @@ pub async fn update(
     }
     if let Some(a) = input.archived {
         am.archived_at = Set(if a { Some(chrono::Utc::now()) } else { None });
+    }
+    if let Some(s) = input.system_prompt {
+        am.system_prompt = Set(s);
+    }
+    if let Some(t) = input.temperature {
+        am.temperature = Set(t.clamp(0.0, 2.0));
     }
     am.updated_at = Set(chrono::Utc::now());
     let updated = am.update(&state.db).await?;
@@ -352,8 +369,13 @@ pub async fn send_and_stream(
         .all(&state.db)
         .await
         .unwrap_or_default();
-    let history: Vec<(String, String)> = prior.into_iter().map(|m| (m.role, m.content)).collect();
+    let mut history: Vec<(String, String)> = Vec::new();
+    if !conv.system_prompt.is_empty() {
+        history.push(("system".to_string(), conv.system_prompt.clone()));
+    }
+    history.extend(prior.into_iter().map(|m| (m.role, m.content)));
     let model_name = conv.model.clone();
+    let temperature = conv.temperature;
 
     let stream = async_stream::stream! {
         yield Ok(Event::default()
@@ -361,7 +383,7 @@ pub async fn send_and_stream(
             .data(user_msg.id.to_string()));
 
         let mut acc = String::new();
-        match openai_stream(&model_name, &history, &prompt).await {
+        match openai_stream(&model_name, &history, &prompt, temperature).await {
             Ok(mut rx) => {
                 while let Some(ev) = rx.recv().await {
                     match ev {
@@ -480,6 +502,7 @@ pub async fn openai_stream(
     model: &str,
     history: &[(String, String)],
     prompt: &str,
+    temperature: f32,
 ) -> std::result::Result<tokio::sync::mpsc::Receiver<ChatEvent>, anyhow::Error> {
     use futures::StreamExt;
     let base =
@@ -495,6 +518,7 @@ pub async fn openai_stream(
         "model": model,
         "messages": messages,
         "stream": true,
+        "temperature": temperature,
     });
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
@@ -558,4 +582,105 @@ pub async fn openai_stream(
 
 fn find_subseq(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|w| w == needle)
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct ShareCreated {
+    pub url: String,
+    pub token: String,
+}
+
+/// Mint a public read-only link for a conversation. Storing only the SHA-256
+/// of the token (never plaintext) so a DB leak doesn't expose live links.
+#[utoipa::path(post, path = "/conversations/{id}/share",
+    responses((status = 201, body = ShareCreated), (status = 404)))]
+pub async fn share(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+) -> Result<(StatusCode, Json<ShareCreated>)> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let conv = conversation::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if conv.owner_id != uid {
+        return Err(AppError::NotFound);
+    }
+    let mut bytes = [0u8; 24];
+    for b in &mut bytes {
+        *b = rand::random::<u8>();
+    }
+    let token = hex::encode(bytes);
+    let hash = {
+        use sha2::Digest;
+        hex::encode(sha2::Sha256::digest(token.as_bytes()))
+    };
+    let mut am: conversation::ActiveModel = conv.into();
+    am.share_token_hash = Set(Some(hash));
+    am.update(&state.db).await?;
+    let base = std::env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "".into());
+    let url = format!("{base}/api/share/conversation/{token}");
+    Ok((StatusCode::CREATED, Json(ShareCreated { url, token })))
+}
+
+#[utoipa::path(delete, path = "/conversations/{id}/share",
+    responses((status = 204), (status = 404)))]
+pub async fn unshare(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let conv = conversation::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if conv.owner_id != uid {
+        return Err(AppError::NotFound);
+    }
+    let mut am: conversation::ActiveModel = conv.into();
+    am.share_token_hash = Set(None);
+    am.update(&state.db).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct PublicConversation {
+    pub title: String,
+    pub model: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub messages: Vec<MessageDto>,
+}
+
+/// Public read: anyone with the token sees the conversation's frozen-at-share
+/// state. Constant-time compare on the hash; tokens not in DB get a 404.
+#[utoipa::path(get, path = "/share/conversation/{token}",
+    responses((status = 200, body = PublicConversation), (status = 404)))]
+pub async fn share_view(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+) -> Result<Json<PublicConversation>> {
+    let hash = {
+        use sha2::Digest;
+        hex::encode(sha2::Sha256::digest(token.as_bytes()))
+    };
+    let conv = conversation::Entity::find()
+        .filter(conversation::Column::ShareTokenHash.eq(Some(hash)))
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let rows = message::Entity::find()
+        .filter(message::Column::ConversationId.eq(conv.id))
+        .order_by_asc(message::Column::ChainSeq)
+        .all(&state.db)
+        .await?;
+    Ok(Json(PublicConversation {
+        title: conv.title,
+        model: conv.model,
+        created_at: conv.created_at,
+        messages: rows.into_iter().map(Into::into).collect(),
+    }))
 }
