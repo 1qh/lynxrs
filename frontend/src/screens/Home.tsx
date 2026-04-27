@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.js'
 import { useAuth } from '../state/auth.js'
 import { useEvents } from '../lib/useEvents.js'
+import { useKeyboardShortcuts } from '../lib/useKeyboardShortcuts.js'
 import { AdminPanel } from './panels/AdminPanel.js'
 import { FilesPanel } from './panels/FilesPanel.js'
 import { ProfilePanel } from './panels/ProfilePanel.js'
@@ -70,6 +71,22 @@ export function Home() {
   useEvents(['file_created', 'file_deleted'], () => {
     setRefreshKey((k) => k + 1)
   })
+
+  // Keyboard shortcuts: g+f = files, g+p = profile, g+o = orgs, g+t = trash,
+  // g+w = webhooks, g+a = audit, g+m = mfa. Inspired by GitHub's g-prefix.
+  // Single 'g' arms a brief listener for the next key.
+  const armed = useState(false)
+  const [gPrefix, setG] = armed
+  useKeyboardShortcuts([
+    { key: 'g', handler: () => { setG(true); setTimeout(() => setG(false), 1500) } },
+    { key: 'f', handler: () => gPrefix && setTab('files') },
+    { key: 'p', handler: () => gPrefix && setTab('profile') },
+    { key: 'o', handler: () => gPrefix && setTab('orgs') },
+    { key: 't', handler: () => gPrefix && setTab('trash') },
+    { key: 'w', handler: () => gPrefix && setTab('webhooks') },
+    { key: 'a', handler: () => gPrefix && setTab('audit') },
+    { key: 'm', handler: () => gPrefix && setTab('mfa') },
+  ])
 
   const logout = useCallback(async () => {
     await api.POST('/auth/logout', {})
