@@ -44,7 +44,9 @@
     "regenerate": "Regenerate",
     "tokens": "tokens",
     "rename": "Rename",
-    "delete": "Delete"
+    "delete": "Delete",
+    "search_placeholder": "Search conversations…",
+    "voice": "Voice input"
   },
   "settings": {
     "profile": "Profile",

@@ -30,7 +30,10 @@ export function ChatPanel() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [streaming, setStreaming] = useState(false)
+  const [searchQ, setSearchQ] = useState('')
+  const [searchHits, setSearchHits] = useState<Array<{ conversation_id: string; title: string; snippet: string }>>([])
   const inputRef = useRef('')
+  const searchRef = useRef('')
   const abortRef = useRef<AbortController | null>(null)
   const lastUserContentRef = useRef('')
 
@@ -132,6 +135,46 @@ export function ChatPanel() {
     }
     return false
   }, [activeId])
+
+  const runSearch = useCallback(async () => {
+    const q = searchRef.current.trim()
+    if (q.length < 2) { setSearchHits([]); return }
+    try {
+      const f = (globalThis as { fetch?: typeof fetch }).fetch
+      if (!f) return
+      const r = await f(`${BASE}/api/conversations/search?q=${encodeURIComponent(q)}`, {
+        credentials: 'include',
+      })
+      if (!r.ok) return
+      setSearchHits(await r.json())
+    } catch {}
+  }, [])
+
+  const startVoice = useCallback(() => {
+    const w = globalThis as {
+      SpeechRecognition?: { new (): any }
+      webkitSpeechRecognition?: { new (): any }
+      document?: Document
+    }
+    const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition
+    if (!Ctor) return
+    const rec = new Ctor()
+    rec.lang = 'en-US'
+    rec.interimResults = false
+    rec.maxAlternatives = 1
+    rec.onresult = (e: { results: ArrayLike<{ 0: { transcript: string } }> }) => {
+      const transcript = (e.results[0] as unknown as { 0: { transcript: string } })[0].transcript
+      inputRef.current = transcript
+      // Best-effort: write into the visible input field (Lynx reads on bindinput).
+      const doc = w.document
+      const el = doc?.querySelector('input[type="text"][placeholder]') as HTMLInputElement | null
+      if (el) {
+        el.value = transcript
+        el.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+    }
+    try { rec.start() } catch {}
+  }, [])
 
   const renameConversation = useCallback(async (id: string) => {
     const w = globalThis as { prompt?: (msg: string, def?: string) => string | null }
@@ -269,6 +312,39 @@ export function ChatPanel() {
 
   return (
     <view className="gap-3">
+      {/* Search */}
+      <input
+        className="h-9 rounded-md bg-background text-foreground px-3 text-sm border border-input"
+        placeholder={t('chat.search_placeholder')}
+        type="text"
+        bindinput={(e: { detail: { value: string } }) => {
+          searchRef.current = e.detail.value
+          setSearchQ(e.detail.value)
+          void runSearch()
+        }}
+      />
+      {searchQ && searchHits.length > 0 ? (
+        <view className="rounded-md bg-card border border-border p-2 gap-1 max-h-[180px] overflow-auto">
+          {searchHits.map((h, i) => (
+            <view
+              key={i}
+              className="rounded-md bg-secondary p-2 gap-0.5"
+              bindtap={() => {
+                setActiveId(h.conversation_id)
+                searchRef.current = ''
+                setSearchQ('')
+                setSearchHits([])
+              }}
+            >
+              <text className="text-secondary-foreground text-sm font-medium">
+                {h.title || '(untitled)'}
+              </text>
+              <text className="text-xs text-muted-foreground">{h.snippet}</text>
+            </view>
+          ))}
+        </view>
+      ) : null}
+
       {/* Conversation list strip */}
       <view className="flex-row items-center gap-2 overflow-auto">
         <view
@@ -397,6 +473,13 @@ export function ChatPanel() {
             inputRef.current = e.detail.value
           }}
         />
+        <view
+          className="h-10 rounded-md bg-secondary border border-border items-center justify-center px-3"
+          bindtap={startVoice}
+          aria-label={t('chat.voice')}
+        >
+          <text className="text-secondary-foreground text-sm">🎤</text>
+        </view>
         <view
           className={
             streaming || !active

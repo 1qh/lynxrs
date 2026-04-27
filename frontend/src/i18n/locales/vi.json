@@ -44,7 +44,9 @@
     "regenerate": "Tạo lại",
     "tokens": "tokens",
     "rename": "Đổi tên",
-    "delete": "Xóa"
+    "delete": "Xóa",
+    "search_placeholder": "Tìm cuộc trò chuyện…",
+    "voice": "Nhập bằng giọng nói"
   },
   "settings": {
     "profile": "Hồ sơ",
