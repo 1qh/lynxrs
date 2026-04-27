@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from '@lynx-js/react'
+import { useCallback, useEffect, useRef, useState } from '@lynx-js/react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.js'
 import { useAuth, type User } from '../state/auth.js'
@@ -13,7 +13,29 @@ export function AuthForm() {
   const [pwLive, setPwLive] = useState('hunter2hunter2')
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [oauth, setOauth] = useState<{ google: boolean; github: boolean }>({
+    google: false,
+    github: false,
+  })
   const strength = passwordStrength(pwLive)
+
+  // Probe which OAuth providers the backend has configured. Endpoint is
+  // unauthenticated and cheap.
+  useEffect(() => {
+    const base =
+      (import.meta.env?.PUBLIC_API_BASE as string | undefined) ?? 'http://localhost:8088'
+    void fetch(`${base}/api/oauth/status`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setOauth(d as typeof oauth) })
+      .catch(() => {})
+  }, [])
+
+  const startOauth = (provider: 'google' | 'github') => {
+    const base =
+      (import.meta.env?.PUBLIC_API_BASE as string | undefined) ?? 'http://localhost:8088'
+    const w = globalThis as { location?: { href: string } }
+    if (w.location) w.location.href = `${base}/api/oauth/${provider}/start`
+  }
 
   const submit = useCallback(async () => {
     setErr(null)
@@ -100,6 +122,31 @@ export function AuthForm() {
           {mode === 'signup' ? t('auth.have_account') : t('auth.new_here')}
         </text>
       </view>
+      {oauth.google || oauth.github ? (
+        <view className="gap-2 pt-3 border-t border-border">
+          <text className="text-xs text-muted-foreground text-center">{t('auth.or_continue_with')}</text>
+          <view className="flex-row gap-2">
+            {oauth.google ? (
+              <view
+                className="flex-1 h-10 rounded-md bg-background border border-input items-center justify-center"
+                bindtap={() => startOauth('google')}
+                aria-label="continue with google"
+              >
+                <text className="text-foreground text-sm font-medium">Google</text>
+              </view>
+            ) : null}
+            {oauth.github ? (
+              <view
+                className="flex-1 h-10 rounded-md bg-background border border-input items-center justify-center"
+                bindtap={() => startOauth('github')}
+                aria-label="continue with github"
+              >
+                <text className="text-foreground text-sm font-medium">GitHub</text>
+              </view>
+            ) : null}
+          </view>
+        </view>
+      ) : null}
     </view>
   )
 }

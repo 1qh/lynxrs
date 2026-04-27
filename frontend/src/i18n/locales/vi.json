@@ -12,6 +12,7 @@
     "log_in": "Đăng nhập",
     "have_account": "Đã có tài khoản? Đăng nhập",
     "new_here": "Mới tới? Đăng ký",
+    "or_continue_with": "hoặc tiếp tục với",
     "email_invalid": "email không hợp lệ",
     "password_too_short": "mật khẩu phải có ít nhất 12 ký tự",
     "failed": "thất bại"
@@ -61,7 +62,8 @@
     "display_name_label": "tên hiển thị: {{value}}",
     "display_name_empty": "—",
     "display_name_placeholder": "tên hiển thị của bạn",
-    "save_profile": "Lưu hồ sơ"
+    "save_profile": "Lưu hồ sơ",
+    "storage": "Dung lượng"
   },
   "orgs": {
     "load": "Tải tổ chức ({{count}})",

@@ -1,8 +1,15 @@
-import { useCallback, useState } from '@lynx-js/react'
+import { useCallback, useEffect, useState } from '@lynx-js/react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../../api/client.js'
 import { useAuth } from '../../state/auth.js'
 import { reportError } from '../../state/toast.js'
+
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`
+}
 
 export function ProfilePanel() {
   const { t } = useTranslation()
@@ -10,6 +17,17 @@ export function ProfilePanel() {
   const setUser = useAuth((s) => s.setUser)
   const [displayName, setDisplayName] = useState<string>(user.display_name ?? '')
   const [avatar, setAvatar] = useState<string | null>(user.avatar_url ?? null)
+  const [quota, setQuota] = useState<{ used: number; limit: number } | null>(null)
+
+  useEffect(() => {
+    void (async () => {
+      const { data } = await api.GET('/me/quota', {})
+      if (data) {
+        const d = data as { used_bytes: number; limit_bytes: number }
+        setQuota({ used: d.used_bytes, limit: d.limit_bytes })
+      }
+    })()
+  }, [])
 
   const save = useCallback(async () => {
     const name = displayName.trim()
@@ -87,6 +105,24 @@ export function ProfilePanel() {
           {t('profile.save_profile')}
         </text>
       </view>
+      {quota ? (
+        <view className="gap-2 pt-3 border-t border-border">
+          <view className="flex-row items-center justify-between">
+            <text className="text-sm font-medium text-foreground">{t('profile.storage')}</text>
+            <text className="text-xs text-muted-foreground">
+              {fmtBytes(quota.used)} / {fmtBytes(quota.limit)}
+            </text>
+          </view>
+          <view className="h-2 rounded-full bg-secondary overflow-hidden">
+            <view
+              className="h-2 bg-primary"
+              style={{
+                width: `${Math.min(100, Math.round((quota.used / Math.max(1, quota.limit)) * 100))}%`,
+              }}
+            />
+          </view>
+        </view>
+      ) : null}
     </view>
   )
 }

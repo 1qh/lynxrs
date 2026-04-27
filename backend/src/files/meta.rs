@@ -4,7 +4,7 @@ use axum::{
 };
 use axum_extra::extract::PrivateCookieJar;
 use object_store::{ObjectStoreExt, path::Path as ObjPath};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QuerySelect, Set};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use utoipa::ToSchema;
@@ -178,15 +178,21 @@ pub async fn me_stats(
         .filter(file_object::Column::DeletedAt.is_not_null())
         .count(&state.db)
         .await?;
-    let sizes: Vec<i64> = file_object::Entity::find()
-        .filter(file_object::Column::OwnerId.eq(uid))
-        .filter(file_object::Column::DeletedAt.is_null())
-        .select_only()
-        .column(file_object::Column::SizeBytes)
-        .into_tuple()
-        .all(&state.db)
+    use sea_orm::{ConnectionTrait, Statement};
+    let row = state
+        .db
+        .query_one(Statement::from_sql_and_values(
+            state.db.get_database_backend(),
+            "SELECT COALESCE(SUM(size_bytes), 0)::BIGINT \
+             FROM file_objects \
+             WHERE owner_id = $1 AND deleted_at IS NULL",
+            [uid.into()],
+        ))
         .await?;
-    let total_bytes: i64 = sizes.iter().sum();
+    let total_bytes: i64 = row
+        .map(|r| r.try_get::<i64>("", "coalesce"))
+        .transpose()?
+        .unwrap_or(0);
     let shares = file_share::Entity::find()
         .inner_join(file_object::Entity)
         .filter(file_object::Column::OwnerId.eq(uid))

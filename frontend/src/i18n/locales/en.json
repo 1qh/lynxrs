@@ -12,6 +12,7 @@
     "log_in": "Log in",
     "have_account": "Have an account? Log in",
     "new_here": "New here? Sign up",
+    "or_continue_with": "or continue with",
     "email_invalid": "email looks invalid",
     "password_too_short": "password must be at least 12 chars",
     "failed": "failed"
@@ -61,7 +62,8 @@
     "display_name_label": "display_name: {{value}}",
     "display_name_empty": "—",
     "display_name_placeholder": "your display name",
-    "save_profile": "Save profile"
+    "save_profile": "Save profile",
+    "storage": "Storage"
   },
   "orgs": {
     "load": "Load orgs ({{count}})",

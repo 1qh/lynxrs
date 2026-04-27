@@ -258,10 +258,11 @@ pub fn router() -> axum::Router<AppState> {
 }
 
 pub async fn config_status() -> impl IntoResponse {
-    let configured = load_config().is_some();
+    let google = load_config_for("google").is_some() || load_config().is_some();
+    let github = load_config_for("github").is_some();
     (
         StatusCode::OK,
         [(header::CONTENT_TYPE, "application/json")],
-        serde_json::json!({ "google": configured }).to_string(),
+        serde_json::json!({ "google": google, "github": github }).to_string(),
     )
 }
