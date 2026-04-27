@@ -388,6 +388,16 @@ function PreviewModal({ file, onClose }: { file: FileDto; onClose: () => void })
     (import.meta.env?.PUBLIC_API_BASE as string | undefined) ?? 'http://localhost:8088'
   const url = `${base}/api/files/${file.id}?inline=true`
   const c = file.content_type
+  const [verify, setVerify] = useState<'idle' | 'checking' | 'ok' | 'mismatch'>('idle')
+  const doVerify = async () => {
+    setVerify('checking')
+    const { data, error } = await api.POST('/files/{id}/verify', {
+      params: { path: { id: file.id } },
+    })
+    if (error) { setVerify('idle'); reportError(error, 'Verify failed'); return }
+    const d = data as { ok?: boolean }
+    setVerify(d.ok ? 'ok' : 'mismatch')
+  }
   return (
     <view
       className="fixed inset-0 bg-background/95 items-center justify-center p-6 z-[9000]"
@@ -406,12 +416,43 @@ function PreviewModal({ file, onClose }: { file: FileDto; onClose: () => void })
         ) : c.startsWith('video/') ? (
           <NativeEmbed kind="video" url={url} className="w-[80vw] max-h-[70vh] rounded-md bg-background" />
         ) : null}
-        <view
-          className="h-9 rounded-md bg-background border border-input items-center justify-center"
-          bindtap={onClose}
-          aria-label="close preview"
-        >
-          <text className="text-foreground text-sm font-medium">close</text>
+        <view className="flex-row gap-2">
+          <view
+            className={
+              verify === 'ok'
+                ? 'h-9 flex-1 rounded-md bg-primary items-center justify-center'
+                : verify === 'mismatch'
+                ? 'h-9 flex-1 rounded-md bg-destructive items-center justify-center'
+                : 'h-9 flex-1 rounded-md bg-background border border-input items-center justify-center'
+            }
+            bindtap={verify === 'checking' ? undefined : () => void doVerify()}
+            aria-label="verify integrity"
+          >
+            <text
+              className={
+                verify === 'ok'
+                  ? 'text-primary-foreground text-sm font-medium'
+                  : verify === 'mismatch'
+                  ? 'text-destructive-foreground text-sm font-medium'
+                  : 'text-foreground text-sm font-medium'
+              }
+            >
+              {verify === 'idle'
+                ? '🔒 verify'
+                : verify === 'checking'
+                ? 'checking…'
+                : verify === 'ok'
+                ? '✓ verified'
+                : '⚠ mismatch'}
+            </text>
+          </view>
+          <view
+            className="h-9 flex-1 rounded-md bg-background border border-input items-center justify-center"
+            bindtap={onClose}
+            aria-label="close preview"
+          >
+            <text className="text-foreground text-sm font-medium">close</text>
+          </view>
         </view>
       </view>
     </view>
