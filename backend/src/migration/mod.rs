@@ -34,6 +34,7 @@ mod m20260424_000031_audit_hash_chain;
 mod m20260424_000032_user_soft_delete;
 mod m20260424_000033_audit_chain_seq;
 mod m20260427_000034_file_fts;
+mod m20260427_000035_chat;
 
 pub struct Migrator;
 
@@ -75,6 +76,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260424_000032_user_soft_delete::Migration),
             Box::new(m20260424_000033_audit_chain_seq::Migration),
             Box::new(m20260427_000034_file_fts::Migration),
+            Box::new(m20260427_000035_chat::Migration),
         ]
     }
 }

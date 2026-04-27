@@ -1,5 +1,6 @@
 pub mod api_token;
 pub mod audit_event;
+pub mod conversation;
 pub mod email_verification;
 pub mod file_comment;
 pub mod file_object;
@@ -7,6 +8,7 @@ pub mod file_share;
 pub mod file_star;
 pub mod file_version;
 pub mod membership;
+pub mod message;
 pub mod mfa_recovery;
 pub mod org;
 pub mod org_invite;
