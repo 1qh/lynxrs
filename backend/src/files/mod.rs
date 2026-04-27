@@ -251,14 +251,28 @@ pub async fn list(
     if let Some(cursor) = q.cursor {
         query = query.filter(file_object::Column::CreatedAt.lt(cursor));
     }
-    // Full-text search via the `search_tsv` GIN-indexed column. Falls back to
-    // ILIKE when the term contains characters tsquery rejects (rare).
+    // Full-text search via the `search_tsv` GIN-indexed column. Each whitespace
+    // token becomes a `prefix:*` lexeme so "ALPHA" matches both "alpha.txt" and
+    // "alphabet.txt" — `plainto_tsquery` would only match the exact lexeme.
     if let Some(needle) = q.q.as_ref().filter(|s| !s.is_empty()) {
         use sea_orm::sea_query::Expr;
-        query = query.filter(Expr::cust_with_values(
-            "search_tsv @@ plainto_tsquery('simple', $1)",
-            [needle.clone()],
-        ));
+        let cleaned = needle
+            .split_whitespace()
+            .map(|w| {
+                w.chars()
+                    .filter(|c| c.is_alphanumeric())
+                    .collect::<String>()
+            })
+            .filter(|w| !w.is_empty())
+            .map(|w| format!("{w}:*"))
+            .collect::<Vec<_>>()
+            .join(" & ");
+        if !cleaned.is_empty() {
+            query = query.filter(Expr::cust_with_values(
+                "search_tsv @@ to_tsquery('simple', $1)",
+                [cleaned],
+            ));
+        }
     }
 
     let mut rows = query.all(&state.db).await?;

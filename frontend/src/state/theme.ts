@@ -21,8 +21,8 @@ function readInitial(): Theme {
 function apply(theme: Theme) {
   try {
     const doc = (globalThis as { document?: Document }).document
-    if (!doc) return
-    const root = doc.documentElement
+    const root = doc?.documentElement
+    if (!root || !root.classList) return
     if (theme === 'dark') root.classList.add('dark')
     else root.classList.remove('dark')
   } catch {}
