@@ -145,6 +145,179 @@ pub struct SendMessageInput {
     pub content: String,
 }
 
+#[derive(Deserialize, ToSchema)]
+pub struct UpdateConversationInput {
+    pub title: Option<String>,
+    pub model: Option<String>,
+    /// Set to true to archive (hide from list); false to unarchive.
+    pub archived: Option<bool>,
+}
+
+#[utoipa::path(patch, path = "/conversations/{id}", request_body = UpdateConversationInput,
+    responses((status = 200, body = ConversationDto), (status = 404)))]
+pub async fn update(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+    Json(input): Json<UpdateConversationInput>,
+) -> Result<Json<ConversationDto>> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let conv = conversation::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if conv.owner_id != uid {
+        return Err(AppError::NotFound);
+    }
+    let mut am: conversation::ActiveModel = conv.into();
+    if let Some(t) = input.title {
+        am.title = Set(t);
+    }
+    if let Some(m) = input.model {
+        am.model = Set(m);
+    }
+    if let Some(a) = input.archived {
+        am.archived_at = Set(if a { Some(chrono::Utc::now()) } else { None });
+    }
+    am.updated_at = Set(chrono::Utc::now());
+    let updated = am.update(&state.db).await?;
+    Ok(Json(updated.into()))
+}
+
+#[utoipa::path(delete, path = "/conversations/{id}",
+    responses((status = 204), (status = 404)))]
+pub async fn delete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let conv = conversation::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if conv.owner_id != uid {
+        return Err(AppError::NotFound);
+    }
+    // CASCADE on messages.conversation_id removes child rows automatically.
+    conversation::Entity::delete_by_id(id)
+        .exec(&state.db)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize, ToSchema, utoipa::IntoParams)]
+pub struct SearchQuery {
+    pub q: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct SearchHit {
+    pub conversation_id: Uuid,
+    pub title: String,
+    pub message_id: Uuid,
+    pub snippet: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[utoipa::path(get, path = "/conversations/search", params(SearchQuery),
+    responses((status = 200, body = [SearchHit])))]
+pub async fn search(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: PrivateCookieJar,
+    axum::extract::Query(q): axum::extract::Query<SearchQuery>,
+) -> Result<Json<Vec<SearchHit>>> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let needle = q.q.trim().to_string();
+    if needle.is_empty() {
+        return Ok(Json(vec![]));
+    }
+    use sea_orm::{ConnectionTrait, FromQueryResult, Statement};
+    #[derive(FromQueryResult)]
+    struct Row {
+        conversation_id: Uuid,
+        title: String,
+        message_id: Uuid,
+        snippet: String,
+        created_at: chrono::DateTime<chrono::Utc>,
+    }
+    // Substring match on both title and content; bounded result count keeps
+    // this responsive even on large stores. Real FTS upgrade: tsvector on
+    // messages.content like we did for files (deferred until volume warrants).
+    let pattern = format!("%{}%", needle);
+    let rows: Vec<Row> = Row::find_by_statement(Statement::from_sql_and_values(
+        state.db.get_database_backend(),
+        "SELECT m.conversation_id, c.title, m.id AS message_id, \
+                substring(m.content from 1 for 200) AS snippet, m.created_at \
+         FROM messages m \
+         JOIN conversations c ON c.id = m.conversation_id \
+         WHERE c.owner_id = $1 \
+           AND (m.content ILIKE $2 OR c.title ILIKE $2) \
+         ORDER BY m.created_at DESC \
+         LIMIT 50",
+        [uid.into(), pattern.into()],
+    ))
+    .all(&state.db)
+    .await?;
+    let hits = rows
+        .into_iter()
+        .map(|r| SearchHit {
+            conversation_id: r.conversation_id,
+            title: r.title,
+            message_id: r.message_id,
+            snippet: r.snippet,
+            created_at: r.created_at,
+        })
+        .collect();
+    Ok(Json(hits))
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct ExportDto {
+    pub markdown: String,
+}
+
+#[utoipa::path(get, path = "/conversations/{id}/export",
+    responses((status = 200, body = ExportDto), (status = 404)))]
+pub async fn export(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: PrivateCookieJar,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ExportDto>> {
+    let uid = crate::auth::authenticate(&state, &headers, &jar).await?;
+    let conv = conversation::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if conv.owner_id != uid {
+        return Err(AppError::NotFound);
+    }
+    let rows = message::Entity::find()
+        .filter(message::Column::ConversationId.eq(id))
+        .order_by_asc(message::Column::ChainSeq)
+        .all(&state.db)
+        .await?;
+    let mut md = String::new();
+    md.push_str(&format!(
+        "# {}\n\n_Model: `{}` · {}_\n\n",
+        if conv.title.is_empty() {
+            "Untitled"
+        } else {
+            &conv.title
+        },
+        conv.model,
+        conv.created_at.to_rfc3339(),
+    ));
+    for r in rows {
+        md.push_str(&format!("## {}\n\n{}\n\n", r.role, r.content));
+    }
+    Ok(Json(ExportDto { markdown: md }))
+}
+
 #[utoipa::path(post, path = "/conversations/{id}/messages", request_body = SendMessageInput,
     responses((status = 200), (status = 404)))]
 pub async fn send_and_stream(

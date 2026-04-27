@@ -92,8 +92,11 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
         webhooks::TestResult,
         chat::ConversationDto,
         chat::CreateConversationInput,
+        chat::UpdateConversationInput,
         chat::MessageDto,
         chat::SendMessageInput,
+        chat::SearchHit,
+        chat::ExportDto,
     )),
     tags(
         (name = "auth", description = "Authentication, MFA, sessions"),
@@ -205,6 +208,9 @@ pub fn build(state: AppState, opts: BuildOpts) -> Router {
         .routes(routes!(webhooks::test_webhook))
         .routes(routes!(webhooks::enable_webhook))
         .routes(routes!(chat::create, chat::list))
+        .routes(routes!(chat::search))
+        .routes(routes!(chat::update, chat::delete))
+        .routes(routes!(chat::export))
         .routes(routes!(chat::messages, chat::send_and_stream))
         .with_state(state.clone())
         .split_for_parts();
