@@ -19,6 +19,7 @@
     "@lynx-js/web-elements": "latest",
     "@tanstack/react-query": "latest",
     "i18next": "^26.0.8",
+    "lucide-static": "^1.11.0",
     "openapi-fetch": "latest",
     "qrcode": "^1.5.4",
     "react-i18next": "^17.0.4",

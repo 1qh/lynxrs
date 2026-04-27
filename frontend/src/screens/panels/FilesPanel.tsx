@@ -18,6 +18,7 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
   const [descEdit, setDescEdit] = useState<{ id: string; text: string } | null>(null)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [preview, setPreview] = useState<FileDto | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -271,7 +272,10 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
                   <view className="flex-1 gap-1">
                     <text
                       className="text-foreground text-sm font-medium"
-                      bindtap={() => void share(f.id)}
+                      bindtap={() => {
+                        if (f.content_type.startsWith('image/')) setPreview(f)
+                        else void share(f.id)
+                      }}
                     >
                       {f.filename}
                     </text>
@@ -342,6 +346,26 @@ export function FilesPanel({ refreshKey }: { refreshKey: number }) {
             <text className="text-primary-foreground text-sm font-medium">
               {t('files.save_description')}
             </text>
+          </view>
+        </view>
+      ) : null}
+      {preview ? (
+        <view
+          className="fixed inset-0 bg-background/95 items-center justify-center p-6 z-[9000]"
+          bindtap={() => setPreview(null)}
+        >
+          <view className="rounded-md bg-card border border-border p-4 gap-3 max-w-[90%] max-h-[90%]">
+            <text className="text-foreground text-sm font-medium">{preview.filename}</text>
+            <image
+              src={`${(import.meta.env?.PUBLIC_API_BASE as string | undefined) ?? 'http://localhost:8088'}/api/files/${preview.id}?inline=true`}
+              className="rounded-md max-w-[80vw] max-h-[70vh]"
+            />
+            <view
+              className="h-9 rounded-md bg-background border border-input items-center justify-center"
+              bindtap={() => setPreview(null)}
+            >
+              <text className="text-foreground text-sm font-medium">close</text>
+            </view>
           </view>
         </view>
       ) : null}
