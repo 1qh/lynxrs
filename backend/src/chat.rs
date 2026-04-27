@@ -88,7 +88,7 @@ pub async fn create(
         id: Set(Uuid::now_v7()),
         owner_id: Set(uid),
         title: Set(input.title.unwrap_or_default()),
-        model: Set(input.model.unwrap_or_else(|| "claude-opus-4-7".into())),
+        model: Set(input.model.unwrap_or_else(default_model)),
         created_at: Set(now),
         updated_at: Set(now),
         archived_at: Set(None),
@@ -170,24 +170,50 @@ pub async fn send_and_stream(
     let conv_id = id;
     let db_for_persist = state.db.clone();
 
+    // Snapshot prior turns once so the streaming closure doesn't need a live
+    // db handle just to build the prompt. Deliberately no system prompt yet —
+    // that's a settings-screen knob we ship in the next slice.
+    let prior = message::Entity::find()
+        .filter(message::Column::ConversationId.eq(id))
+        .order_by_asc(message::Column::ChainSeq)
+        .all(&state.db)
+        .await
+        .unwrap_or_default();
+    let history: Vec<(String, String)> = prior.into_iter().map(|m| (m.role, m.content)).collect();
+    let model_name = conv.model.clone();
+
     let stream = async_stream::stream! {
-        // Emit the persisted user message id first so the client can swap its
-        // optimistic local row for the canonical one.
         yield Ok(Event::default()
             .event("user_persisted")
             .data(user_msg.id.to_string()));
 
-        // Stub model: stream the prompt back word-by-word so every chunk path
-        // through the wire is exercised. Replace with anthropic SDK call when
-        // ANTHROPIC_API_KEY is set; same SSE shape.
         let mut acc = String::new();
-        for tok in synthesize_response(&prompt) {
-            acc.push_str(&tok);
-            yield Ok(Event::default().event("delta").data(tok));
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        match openai_stream(&model_name, &history, &prompt).await {
+            Ok(mut rx) => {
+                while let Some(ev) = rx.recv().await {
+                    match ev {
+                        ChatEvent::Delta(t) => {
+                            acc.push_str(&t);
+                            yield Ok(Event::default().event("delta").data(t));
+                        }
+                        ChatEvent::Error(e) => {
+                            yield Ok(Event::default().event("error").data(e));
+                        }
+                        ChatEvent::Done => break,
+                    }
+                }
+            }
+            Err(_) => {
+                // No upstream LLM reachable — fall back to stub so the UI
+                // is exercised. Real LLMs report errors via ChatEvent::Error.
+                for tok in synthesize_response(&prompt) {
+                    acc.push_str(&tok);
+                    yield Ok(Event::default().event("delta").data(tok));
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+            }
         }
 
-        // Persist the assistant turn at end-of-stream.
         if let Ok(msg) = insert_message_db(&db_for_persist, conv_id, "assistant", &acc).await {
             yield Ok(Event::default()
                 .event("assistant_persisted")
@@ -245,9 +271,15 @@ async fn insert_message_db(
     Ok(row)
 }
 
+/// Default model name. Override per-conversation via `CreateConversationInput.model`.
+/// Configure with env `OPENAI_DEFAULT_MODEL` (e.g. `gpt-4o-mini` for real OpenAI).
+fn default_model() -> String {
+    std::env::var("OPENAI_DEFAULT_MODEL").unwrap_or_else(|_| "qwen3.5:4b-q4_K_M".into())
+}
+
 /// Stub model — splits prompt into words and streams them back, simulating
-/// a model that thoughtfully echoes. Replace with a real provider call when
-/// credentials exist; the SSE shape (`delta` events + `done`) stays.
+/// a model that thoughtfully echoes. Used only when no upstream LLM is
+/// reachable (e.g. in CI without ollama running).
 fn synthesize_response(prompt: &str) -> Vec<String> {
     let words: Vec<&str> = prompt.split_whitespace().collect();
     if words.is_empty() {
@@ -258,4 +290,99 @@ fn synthesize_response(prompt: &str) -> Vec<String> {
         out.push(format!("{w} "));
     }
     out
+}
+
+#[derive(Debug)]
+pub enum ChatEvent {
+    Delta(String),
+    Error(String),
+    Done,
+}
+
+/// OpenAI-compatible streaming chat completion. Defaults target a local
+/// Ollama at :11434 — set `OPENAI_BASE_URL` to point elsewhere (e.g. real
+/// OpenAI, vLLM, llama.cpp server). `OPENAI_API_KEY` is sent as Bearer when
+/// present; unset for local Ollama.
+pub async fn openai_stream(
+    model: &str,
+    history: &[(String, String)],
+    prompt: &str,
+) -> std::result::Result<tokio::sync::mpsc::Receiver<ChatEvent>, anyhow::Error> {
+    use futures::StreamExt;
+    let base =
+        std::env::var("OPENAI_BASE_URL").unwrap_or_else(|_| "http://localhost:11434/v1".into());
+    let url = format!("{}/chat/completions", base.trim_end_matches('/'));
+    let mut messages: Vec<serde_json::Value> = history
+        .iter()
+        .filter(|(r, _)| r == "user" || r == "assistant" || r == "system")
+        .map(|(role, content)| serde_json::json!({"role": role, "content": content}))
+        .collect();
+    messages.push(serde_json::json!({"role": "user", "content": prompt}));
+    let body = serde_json::json!({
+        "model": model,
+        "messages": messages,
+        "stream": true,
+    });
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()?;
+    let mut req = client.post(&url).json(&body);
+    if let Ok(key) = std::env::var("OPENAI_API_KEY")
+        && !key.is_empty()
+    {
+        req = req.bearer_auth(key);
+    }
+    let resp = req.send().await?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let txt = resp.text().await.unwrap_or_default();
+        anyhow::bail!("openai-compat {status}: {txt}");
+    }
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<ChatEvent>(64);
+    tokio::spawn(async move {
+        let mut stream = resp.bytes_stream();
+        let mut buf: Vec<u8> = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            let Ok(bytes) = chunk else { break };
+            buf.extend_from_slice(&bytes);
+            // SSE frames are separated by blank lines. Iterate complete frames.
+            while let Some(pos) = find_subseq(&buf, b"\n\n") {
+                let frame = buf.drain(..pos + 2).collect::<Vec<_>>();
+                let frame = String::from_utf8_lossy(&frame).to_string();
+                for line in frame.lines() {
+                    let Some(payload) = line.strip_prefix("data:") else {
+                        continue;
+                    };
+                    let payload = payload.trim();
+                    if payload == "[DONE]" {
+                        let _ = tx.send(ChatEvent::Done).await;
+                        return;
+                    }
+                    if payload.is_empty() {
+                        continue;
+                    }
+                    let Ok(json) = serde_json::from_str::<serde_json::Value>(payload) else {
+                        continue;
+                    };
+                    if let Some(content) = json
+                        .get("choices")
+                        .and_then(|c| c.get(0))
+                        .and_then(|c| c.get("delta"))
+                        .and_then(|d| d.get("content"))
+                        .and_then(|c| c.as_str())
+                        && !content.is_empty()
+                    {
+                        let _ = tx.send(ChatEvent::Delta(content.to_string())).await;
+                    }
+                }
+            }
+        }
+        let _ = tx.send(ChatEvent::Done).await;
+    });
+    Ok(rx)
+}
+
+fn find_subseq(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|w| w == needle)
 }
