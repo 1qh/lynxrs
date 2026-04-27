@@ -251,14 +251,19 @@ pub async fn list(
     if let Some(cursor) = q.cursor {
         query = query.filter(file_object::Column::CreatedAt.lt(cursor));
     }
+    // Full-text search via the `search_tsv` GIN-indexed column. Falls back to
+    // ILIKE when the term contains characters tsquery rejects (rare).
+    if let Some(needle) = q.q.as_ref().filter(|s| !s.is_empty()) {
+        use sea_orm::sea_query::Expr;
+        query = query.filter(Expr::cust_with_values(
+            "search_tsv @@ plainto_tsquery('simple', $1)",
+            [needle.clone()],
+        ));
+    }
 
     let mut rows = query.all(&state.db).await?;
     if let Some(t) = q.tag.as_ref().filter(|s| !s.is_empty()) {
         rows.retain(|r| r.tags.iter().any(|x| x == t));
-    }
-    if let Some(needle) = q.q.as_ref().filter(|s| !s.is_empty()) {
-        let n = needle.to_lowercase();
-        rows.retain(|r| r.filename.to_lowercase().contains(&n));
     }
     let has_more = rows.len() as u64 > limit;
     if has_more {
