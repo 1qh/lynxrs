@@ -92,6 +92,9 @@ test('boot → signup → upload → logout → relogin', async ({ page }) => {
   await tapText(page, 'Upload sample text')
   await waitForText(page, 'note-', 10_000)
 
+  // Logout lives behind the More menu in the new mobile shell.
+  await tapText(page, 'More')
+  await waitForText(page, 'Log out', 5_000)
   await tapText(page, 'Log out')
   await waitForText(page, 'Create account', 10_000)
 
