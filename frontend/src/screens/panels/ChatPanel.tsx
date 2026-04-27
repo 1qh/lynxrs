@@ -192,22 +192,34 @@ export function ChatPanel() {
     w.speechSynthesis.speak(u)
   }, [messages])
 
-  const attachImage = useCallback(() => {
+  const attachFile = useCallback(() => {
     const doc = (globalThis as { document?: Document }).document
     if (!doc) return
     const el = doc.createElement('input')
     el.type = 'file'
-    el.accept = 'image/*'
     el.onchange = async () => {
       const f = el.files?.[0]
       if (!f) return
-      const ab = await f.arrayBuffer()
-      const bytes = new Uint8Array(ab)
-      let bin = ''
-      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!)
-      const dataUrl = `data:${f.type || 'image/png'};base64,${btoa(bin)}`
-      // Embed as markdown image syntax in the next user message.
-      inputRef.current = `${inputRef.current}\n\n![attachment](${dataUrl})`
+      const isImage = f.type.startsWith('image/')
+      const isText = f.type.startsWith('text/') || /\.(md|json|csv|tsv|log|ya?ml|toml|conf|sql|sh|js|ts|tsx|jsx|rs|py|go|rb|java|c|h|cpp|hpp)$/i.test(f.name)
+      let injected: string
+      if (isImage) {
+        const ab = await f.arrayBuffer()
+        const bytes = new Uint8Array(ab)
+        let bin = ''
+        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!)
+        const dataUrl = `data:${f.type || 'image/png'};base64,${btoa(bin)}`
+        injected = `![${f.name}](${dataUrl})`
+      } else if (isText) {
+        const text = await f.text()
+        // Trim aggressively so prompts don't blow context limits; warn user.
+        const max = 8000
+        const body = text.length > max ? text.slice(0, max) + '\n…(truncated)' : text
+        injected = `\n\n\`\`\`\n# ${f.name}\n${body}\n\`\`\`\n`
+      } else {
+        injected = `[file: ${f.name} · ${f.type || 'binary'} · ${f.size}B (binary attachments not yet supported in chat)]`
+      }
+      inputRef.current = `${inputRef.current}\n\n${injected}`
       const input = doc.querySelector('input[placeholder]') as HTMLInputElement | null
       if (input) {
         input.value = inputRef.current
@@ -704,7 +716,7 @@ export function ChatPanel() {
         />
         <view
           className="h-10 rounded-md bg-secondary border border-border items-center justify-center px-3"
-          bindtap={attachImage}
+          bindtap={attachFile}
           aria-label={t('chat.attach')}
         >
           <text className="text-secondary-foreground text-sm">📎</text>
