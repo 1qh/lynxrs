@@ -39,7 +39,10 @@
     "empty_hint": "Tap “+ New” to begin chatting.",
     "start_conversation": "Send your first message",
     "compose_placeholder": "Message…",
-    "send": "Send"
+    "send": "Send",
+    "stop": "Stop",
+    "regenerate": "Regenerate",
+    "tokens": "tokens"
   },
   "settings": {
     "profile": "Profile",

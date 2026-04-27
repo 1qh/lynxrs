@@ -39,7 +39,10 @@
     "empty_hint": "Nhấn “+ Mới” để bắt đầu.",
     "start_conversation": "Gửi tin nhắn đầu tiên",
     "compose_placeholder": "Tin nhắn…",
-    "send": "Gửi"
+    "send": "Gửi",
+    "stop": "Dừng",
+    "regenerate": "Tạo lại",
+    "tokens": "tokens"
   },
   "settings": {
     "profile": "Hồ sơ",

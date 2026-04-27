@@ -31,6 +31,13 @@ export function ChatPanel() {
   const [messages, setMessages] = useState<Message[]>([])
   const [streaming, setStreaming] = useState(false)
   const inputRef = useRef('')
+  const abortRef = useRef<AbortController | null>(null)
+  const lastUserContentRef = useRef('')
+
+  // Heuristic token count: ~4 chars/token. Good enough for a UX badge;
+  // exact counts come from the model provider on completion.
+  const tokenCount = (s: string) => Math.ceil(s.length / 4)
+  const totalTokens = messages.reduce((n, m) => n + tokenCount(m.content), 0)
 
   const refreshConvs = useCallback(async () => {
     try {
@@ -85,9 +92,10 @@ export function ChatPanel() {
     }
   }, [])
 
-  const send = useCallback(async () => {
-    const text = inputRef.current.trim()
+  const send = useCallback(async (overrideText?: string) => {
+    const text = (overrideText ?? inputRef.current).trim()
     if (!text || !activeId || streaming) return
+    lastUserContentRef.current = text
     setStreaming(true)
     inputRef.current = ''
     // Optimistic user bubble.
@@ -102,6 +110,8 @@ export function ChatPanel() {
       ...cur,
       { id: asstTempId, role: 'assistant', content: '', created_at: new Date().toISOString() },
     ])
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
     try {
       const f = (globalThis as { fetch?: typeof fetch }).fetch
       if (!f) throw new Error('fetch unavailable')
@@ -109,6 +119,7 @@ export function ChatPanel() {
       const r = await f(`${BASE}/api/conversations/${activeId}/messages`, {
         method: 'POST',
         credentials: 'include',
+        signal: ctrl.signal,
         headers: { ...headers, 'content-type': 'application/json', accept: 'text/event-stream' },
         body: JSON.stringify({ content: text }),
       })
@@ -143,11 +154,24 @@ export function ChatPanel() {
       void loadMessages(activeId)
       void refreshConvs()
     } catch (e) {
-      reportError(e, 'Stream failed')
+      // AbortError is the user pressing Stop — not an error.
+      if (!(e instanceof DOMException && e.name === 'AbortError')) {
+        reportError(e, 'Stream failed')
+      }
     } finally {
+      abortRef.current = null
       setStreaming(false)
     }
   }, [activeId, streaming, loadMessages, refreshConvs])
+
+  const stop = useCallback(() => {
+    abortRef.current?.abort()
+  }, [])
+
+  const regenerate = useCallback(() => {
+    if (streaming || !lastUserContentRef.current) return
+    void send(lastUserContentRef.current)
+  }, [streaming, send])
 
   const active = convs.find((c) => c.id === activeId) ?? null
 
@@ -198,15 +222,17 @@ export function ChatPanel() {
                   : 'self-start max-w-[85%] rounded-md bg-card border border-border px-3 py-2'
               }
             >
-              <text
-                className={
-                  m.role === 'user'
-                    ? 'text-primary-foreground text-sm whitespace-pre-wrap'
-                    : 'text-foreground text-sm whitespace-pre-wrap'
-                }
-              >
-                {m.content || (streaming && m.role === 'assistant' ? '…' : '')}
-              </text>
+              {m.role === 'assistant' ? (
+                <text className="text-foreground text-sm whitespace-pre-wrap">
+                  {m.content || (streaming ? '…' : '')}
+                </text>
+              ) : (
+                <text
+                  className="text-primary-foreground text-sm whitespace-pre-wrap"
+                >
+                  {m.content}
+                </text>
+              )}
             </view>
           ))}
           {messages.length === 0 ? (
@@ -216,6 +242,38 @@ export function ChatPanel() {
           ) : null}
         </view>
       )}
+
+      {/* Action row: stop / regenerate + token meter */}
+      {active ? (
+        <view className="flex-row items-center justify-between gap-2 px-1">
+          <view className="flex-row gap-2">
+            {streaming ? (
+              <view
+                className="h-7 rounded-md bg-destructive items-center justify-center px-3"
+                bindtap={stop}
+                aria-label={t('chat.stop')}
+              >
+                <text className="text-destructive-foreground text-xs font-medium">
+                  ⏹ {t('chat.stop')}
+                </text>
+              </view>
+            ) : messages.some((m) => m.role === 'assistant') ? (
+              <view
+                className="h-7 rounded-md bg-secondary items-center justify-center px-3"
+                bindtap={regenerate}
+                aria-label={t('chat.regenerate')}
+              >
+                <text className="text-secondary-foreground text-xs font-medium">
+                  ↻ {t('chat.regenerate')}
+                </text>
+              </view>
+            ) : null}
+          </view>
+          <text className="text-[11px] text-muted-foreground">
+            ~{totalTokens} {t('chat.tokens')}
+          </text>
+        </view>
+      ) : null}
 
       {/* Composer */}
       <view className="flex-row items-end gap-2 pt-2 border-t border-border">
@@ -250,3 +308,4 @@ export function ChatPanel() {
     </view>
   )
 }
+
